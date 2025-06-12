@@ -1,0 +1,2 @@
+## pulsarfitpy: An Efficient Neutron Star Curve Analyzer
+pulsarfitpy is a Python library that uses empirical data to approximate visualized polynomial functions for Neutron star parameters through the Australia Telescope National Facility (ATNF) pulsar database and psrqpy.
