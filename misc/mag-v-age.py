@@ -1,64 +1,51 @@
-# test.py
-
 import numpy as np
 import matplotlib.pyplot as plt
-from psrqpy import QueryATNF
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import PolynomialFeatures
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GridSearchCV
+from psrqpy import QueryATNF
 
-# Create graph from Age-vs-BSurf.py
-def scatter_graph(x_name, y_name, title, x_coord, y_coord, label):
-    plt.figure(figsize=(8, 5))
-    plt.xlabel(x_name) # NEW: Added Logarithmic Scaling x & y axes
-    plt.ylabel(y_name)       # ''
-    plt.title(title)
-    plt.grid(True, which='both', linestyle='--', alpha=0.5)
-    plt.legend()
-    plt.tight_layout()
-    plt.scatter(x_coord, y_coord, s=10, alpha=0.6, label=label)
-    
-# Ask ATNF for name, age, and magnetic field strength of every pulsar that has the data
-query = QueryATNF(params=['JNAME', 'AGE', 'BSURF'], condition='exist(AGE) && exist(BSURF)')
+# Generate data points from psrqpy query
+query = QueryATNF(params=['JNAME', 
+                          'AGE', 
+                          'BSURF'], 
+                          condition='exist(AGE) && exist(BSURF)')
 table = query.table
 
-# Put the log of values in arrays
-ages = np.array(np.log(table['AGE'], dtype=float))
-bsurfs = np.array(np.log(table['BSURF'], dtype=float))
+ages = np.array(np.log(table['AGE'], dtype=float)).reshape(-1, 1) # Take log versions of data
+bsurfs = np.array(np.log(table['BSURF'], dtype=float))            # ''
 
-# age_train, age_test, bsurfs_train, bsurfs_test = train_test_split(ages, bsurfs, test_size=0.3)
-# rmses = []
+# Create pipeline for regression
+pipeline = Pipeline([
+    ('poly', PolynomialFeatures()),
+    ('reg', LinearRegression())
+])
 
-# q3, q1 = np.percentile(bsurfs, [75, 25])
-# iqr = q3-q1
-# fence = (q3 + iqr, q1 - iqr)
-# np.less(bsurfs, fence[0])
-# np.greater(bsurfs, fence[1])
+# Search for polynomial degree
+param_grid = {
+    'poly__degree': list(range(1, 20))  # Test degrees from 1 to 20
+}
 
-# define line's start and end
-line = np.linspace(min(ages), max(ages))
+# Integrates pipeline, tests degrees, and a grid fit for data
+grid = GridSearchCV(pipeline, param_grid)
+grid.fit(ages, bsurfs)
 
-# pipe = Pipeline([ # This does not work and I don't know how to make it work
-#         ('scale', StandardScaler()),
-#         ('reduce_dims', PCA(n_components=4)),
-#         ('clf', SVC(kernel = 'linear', C = 1))])
+# Predict on a fine grid for plotting
+polynomial_model_X = np.linspace(ages.min(), ages.max(), 100).reshape(-1, 1) # Implement smoother values
+polynomial_model_Y = grid.best_estimator_.predict(polynomial_model_X)        # Generate approximate model
 
-# param_grid = {'polynomialfeatures__degree': np.arange(20), # HOW DO YOU WORK
-# 'linearregression__fit_intercept': [True, False],
-# 'linearregression__normalize': [True, False]} # whyyy was normalize removed
+# Print Degree
+degree = grid.best_params_['poly__degree']   # Output best degree
+print(f"Chosen Polynomial Degree: {degree}") # Print degree
 
-# grid = GridSearchCV(pipe, param_grid=param_grid, cv=5, n_jobs=1, verbose=2)
-# grid.fit(ages, bsurfs)
-
-# Plot everything
-model = np.poly1d(np.polyfit(ages, bsurfs, 4))    
-scatter_graph('Characteristic Age [log10(yrs)]', 'Magnetic Field [log10(G)]', \
-              'Magnetic Field vs Pulsar Age', ages, bsurfs, 'Pulsars')
-
-# bsurfs_test = model.fit(ages, bsurfs).predict(ages_test)
-# plt.plot(ages_test.ravel(), bsurfs_test, 'r')
-    
-model = np.poly1d(np.polyfit(ages, bsurfs, 4))
-plt.plot(line, model(line), color="red")
+# Plot the approximated data points & polynomial regression function
+plt.figure(figsize=(10, 6))
+plt.scatter(ages, bsurfs, s=10, alpha=0.6, label='Pulsars')
+plt.plot(polynomial_model_X, polynomial_model_Y, color='red', label='Best Polynomial Fit') # Plot the model
+plt.legend()
+plt.title('Observed Magnetic Field vs. Characteristic Age')
+plt.xlabel('log(Characteristic Age) [log(yrs)]')
+plt.ylabel('log(Magnetic Field) [log(B)]')
+plt.grid(True)
 plt.show()
-
