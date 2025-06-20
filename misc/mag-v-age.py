@@ -6,8 +6,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GridSearchCV
 from psrqpy import QueryATNF
 
-class pulsar_approx: 
-    # store all choices globablly, and make a table with chosen data from psrqpy
+class pulsarfitpy: 
 
     def poly_reg(x_param, y_param, degree_test):
         
