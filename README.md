@@ -16,7 +16,7 @@ git clone https://github.com/jfk-astro/pulsarfitpy.git
 > integer is maximum polynomial degree searched for
 pulsarfitpy.poly_reg(str, str, int)
 ```bash
-pulsarfitpy.poly_reg('AGES', 'BSURFS', 5)
+pulsarfitpy.poly_reg('AGE', 'BSURF', 5)
 ```
 
 ## Contributing
