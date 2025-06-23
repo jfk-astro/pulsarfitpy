@@ -1,20 +1,23 @@
 # pulsarfitpy
-> pulsarfitpy is a Python library that uses empirical data to approximate visualized polynomial functions for Neutron star parameters through the Australia Telescope National Facility (ATNF) pulsar database and psrqpy.
+> pulsarfitpy is a Python library that uses empirical data to approximate visualized polynomial functions for Neutron star parameters through the []Australia Telescope National Facility (ATNF)](https://www.atnf.csiro.au/) pulsar database and psrqpy.
 
 ## Installation
 > Requirements: []
 1. Clone the repository:
-''' bash
+``` bash
 git clone https://github.com/jfk-astro/pulsarfitpy.git
-'''
+```
 
 2. 
 
 ## Usage
-pulsarfitpy.poly_reg(str, str, int)
-> accepts a x-param and y-param string that can be found in the [psrqpy paramters](https://www.atnf.csiro.au/research/pulsar/psrcat/psrcat_help.html?type=expert#par_list) 
+> strings are parameters for x and y, options found in [psrqpy parameters](https://www.atnf.csiro.au/research/pulsar/psrcat/psrcat_help.html?type=expert#par_list) 
 
-> the integer decides to which order/degree will be searched up to for the data's best fit
+> integer is maximum polynomial degree searched for
+pulsarfitpy.poly_reg(str, str, int)
+```bash
+pulsarfitpy.poly_reg('AGES', 'BSURFS', 5)
+```
 
 ## Contributing
 1. Fork the repository.
@@ -22,3 +25,6 @@ pulsarfitpy.poly_reg(str, str, int)
 3. Make your changes.
 4. Push your branch: `git push origin feature-name`.
 5. Create a pull request.
+
+## Credits
+pulsarfitpy was written by Jonathan Sorenson, Om Kasar, 
