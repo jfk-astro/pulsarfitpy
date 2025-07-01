@@ -1,0 +1,19 @@
+# Ignore Virtual Environments
+venv/
+env/
+.venv/
+.env/
+clean_env/
+myenv/
+
+# VS Code Configurations
+.vscode/
+
+# Environment variables and secrets
+.env
+*.env
+
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*$py.class

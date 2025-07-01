@@ -27,4 +27,4 @@ pulsarfitpy.poly_reg('AGE', 'BSURF', 5)
 5. Create a pull request.
 
 ## Credits
-pulsarfitpy was written by Jonathan Sorenson, Om Kasar, 
+pulsarfitpy was written by Jonathan Sorenson, Om Kasar, Saumil Sharma, and Kason Lai.
