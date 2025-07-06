@@ -1,0 +1,73 @@
+Metadata-Version: 2.4
+Name: pulsarfitpy
+Version: 0.1.0
+Summary: pulsarfitpy is a Python library that uses empirical data from the Australia Telescope National Facility (ATNF) database & psrqpy to predict pulsar behaviors using provided Physics Informed Neural Networks (PINNs). For more data visualization, it also offers accurate polynomial approximations of visualized datasets from two psrqpy query parameters using scikit-learn.
+Home-page: https://github.com/jfk-astro/pulsarfitpy
+Author: Om Kasar, Saumil Sharma, Jonathan Sorenson, Kason Lai
+Author-email: contact.omkasar@gmail.com
+License: GPL-3.0
+Classifier: License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Scientific :: Astronomy
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: numpy
+Requires-Dist: torch
+Requires-Dist: psrqpy
+Requires-Dist: scikit-learn
+Requires-Dist: sympy
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: license
+Dynamic: license-file
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# pulsarfitpy
+pulsarfitpy is a Python library that uses empirical data from the [Australia Telescope National Facility (ATNF)](https://www.atnf.csiro.au/) database & psrqpy to predict pulsar behaviors using provided Physics Informed Neural Networks (PINNs). For more data visualization, it also offers accurate polynomial approximations of visualized datasets from two psrqpy query parameters using scikit-learn.
+
+## Prerequisites:
+
+- Python (>=3.12)
+- NumPy
+- Matplotlib
+- psrqpy
+- scikit-learn
+- PyTorch
+- SymPy
+
+Install all dependencies by running the following command in the terminal:
+```bash
+pip install numpy matplotlib psrqpy scikit-learn torch sympy
+```
+
+## Installation
+To install the library, simply run the following in the terminal:
+``` bash
+pip install pulsarfitpy
+```
+For library usage, import the pulsarfitpy library with:
+```python
+import pulsarfitpy as pf
+```
+Refer to the documentation for further usage of the library.
+
+## Contributing
+1. Fork the repository.
+2. Create a new branch: `git checkout -b feature-name`.
+3. Make your changes.
+4. Push your branch: `git push origin feature-name`.
+5. Create a pull request.
+
+## Credits
+pulsarfitpy was written by Om Kasar, Saumil Sharma, Jonathan Sorenson, and Kason Lai.
+
+## Contact
+For any questions about the repository, email contact.omkasar@gmail.com.

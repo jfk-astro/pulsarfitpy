@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import sympy as sp
-import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.pipeline import Pipeline
@@ -61,6 +60,7 @@ class PulsarApproximation:
 
     # Fits polynomial to a logarithmic scaled graph
     def fit_polynomial(self):
+        print("\nFitting Polynomial Approximation...")
         best_score = float('-inf')
         best_model = None
         best_degree = None
@@ -102,43 +102,89 @@ class PulsarApproximation:
         print(f"\nBest Polynomial Degree: {self.best_degree}")
         print(f"\nApproximated Polynomial Function:\nf(x) = {poly_expr}")
 
-# Pulsar PINN Prediction Class + Framework
+# sympy Variables to PyTorch residuals
+def symbolic_torch(sym_eq: sp.Eq, x_sym, y_sym):
+    """
+    Converts a sympy equation Eq(lhs, rhs) to a PyTorch autograd-compatible residual function.
+
+    Parameters:
+    - sym_eq: sympy Eq(lhs, rhs)
+    - x_sym: sympy Symbol for input (e.g. logP)
+    - y_sym: sympy Symbol for predicted output (e.g. logEDOT)
+
+    Returns:
+    - A function of (x_tensor, y_predicted_tensor) → residual_tensor
+    """
+    # Ensure lhs - rhs = 0 format
+    residual_expr = sp.simplify(sym_eq.lhs - sym_eq.rhs)
+
+    # Convert SymPy to Python function using PyTorch
+    def residual_fn(x_tensor, y_tensor):
+        x = x_tensor.clone().detach().requires_grad_(True)
+        y = y_tensor.clone().detach().requires_grad_(True)
+
+        # Define symbolic expressions in PyTorch manually
+        # Use torch.log10, torch.pow, etc., and substitute values
+        # Assume scalar broadcasting
+        locals_dict = {
+            str(x_sym): x,
+            str(y_sym): y,
+            "log": torch.log10,
+            "pi": torch.tensor(np.pi, dtype=torch.float64),
+        }
+
+        # Recompile SymPy expression into PyTorch
+        residual_lambda = sp.lambdify((x_sym, y_sym), residual_expr, modules='torch')
+        residual = residual_lambda(x, y)
+
+        return residual
+
+    return residual_fn
+
 class PulsarPINN:
-    def __init__(self, x_param: str, y_param: str,
-                 physics_eq: sp.Eq,
-                 x_sym: sp.Symbol, y_sym: sp.Symbol,
+    def __init__(self,
+                 x_param: str = None,
+                 y_param: str = None,
+                 differential_equation: sp.Eq = None,
+                 x_sym: sp.Symbol = None,
+                 y_sym: sp.Symbol = None,
                  learn_constant: dict = None,
                  log_scale=True,
-                 psrqpy_filter_fn=None):
+                 psrqpy_filter_fn=None,
+                 query: QueryATNF = None,
+                 x_data=None,
+                 y_data=None):
         """
-        Parameters:
-        - x_param, y_param: ATNF pulsar parameters (e.g., 'P0', 'EDOT')
-        - physics_eq: sympy equation like Eq(lhs, rhs) to represent physics
-        - x_sym, y_sym: symbols used for input/output (e.g., logP, logEDOT)
-        - learn_constant: dict of {symbol: initial_guess} for learnable constants
-        - log_scale: whether to use log10 scaling
+        Now supports user-provided x_data and y_data instead of always using psrqpy.
         """
-        self.x_param = x_param
-        self.y_param = y_param
-        self.physics_eq = physics_eq
-        self.x_sym = x_sym
-        self.y_sym = y_sym
-        self.learn_constant = learn_constant or {}
+        self.query = query
         self.log_scale = log_scale
         self.psrqpy_filter_fn = psrqpy_filter_fn
+        self.learn_constant = learn_constant or {}
+        self.x_data = x_data
+        self.y_data = y_data
+
+        self.x_param = x_param
+        self.y_param = y_param
+        self.x_sym = x_sym
+        self.y_sym = y_sym
+        self.physics_eq = differential_equation
 
         self.learnable_params = {}
         self._prepare_data()
         self._build_model()
         self._convert_symbolic_to_residual()
 
-    # Filter data for PyTorch use
     def _prepare_data(self):
-        query = QueryATNF(params=[self.x_param, self.y_param])
-        table = query.table
-
-        x = table[self.x_param].data
-        y = table[self.y_param].data
+        if self.x_data is not None and self.y_data is not None:
+            x = np.array(self.x_data, dtype=float)
+            y = np.array(self.y_data, dtype=float)
+        elif self.query is not None:
+            table = self.query.table
+            x = table[self.x_param].data
+            y = table[self.y_param].data
+        else:
+            raise ValueError("Provide either a QueryATNF object or x_data and y_data arrays.")
 
         mask = (~np.isnan(x)) & (~np.isnan(y)) & (x > 0) & (y > 0)
         x, y = x[mask], y[mask]
@@ -152,8 +198,7 @@ class PulsarPINN:
 
         self.x_torch = torch.tensor(self.x_raw, dtype=torch.float64).view(-1, 1).requires_grad_(True)
         self.y_torch = torch.tensor(self.y_raw, dtype=torch.float64).view(-1, 1)
-
-    # Add layers
+        
     def _build_model(self):
         self.model = nn.Sequential(
             nn.Linear(1, 32),
@@ -163,7 +208,6 @@ class PulsarPINN:
             nn.Linear(32, 1)
         ).double()
 
-        # Create learnable torch parameters based on missing constants
         self.learnable_params = {
             str(k): torch.nn.Parameter(torch.tensor([v], dtype=torch.float64))
             for k, v in self.learn_constant.items()
@@ -174,7 +218,6 @@ class PulsarPINN:
             lr=1e-3
         )
 
-    # Converts the symbolic sympy equation into a callable PyTorch residual function
     def _convert_symbolic_to_residual(self):
         residual_expr = sp.simplify(self.physics_eq.lhs - self.physics_eq.rhs)
         symbols = [self.x_sym, self.y_sym] + list(self.learn_constant.keys())
@@ -187,15 +230,16 @@ class PulsarPINN:
             for k, param in self.learnable_params.items():
                 subs[k] = param
 
-            # Convert symbolic expression to a PyTorch-callable function
             expr_fn = sp.lambdify(symbols, residual_expr, modules="torch")
             inputs = [subs[str(s)] for s in symbols]
             return expr_fn(*inputs)
 
         self.physics_residual_fn = residual_fn
 
-    # Train the model
     def train(self, epochs=3000):
+        print("\nTraining PINN...")
+        self.loss_history = []
+
         for epoch in range(epochs):
             y_pred = self.model(self.x_torch)
             residual = self.physics_residual_fn(self.x_torch, y_pred)
@@ -207,13 +251,15 @@ class PulsarPINN:
             loss.backward()
             self.optimizer.step()
 
+            self.loss_history.append(loss.item())
+
             if epoch % 1000 == 0:
                 const_str = ", ".join(
                     f"{k}={v.item():.4f}" for k, v in self.learnable_params.items()
                 )
                 print(f"Epoch {epoch}: Loss = {loss.item():.10e} | {const_str}")
 
-    # Predict extended pattern of model to continue graph
+
     def predict_extended(self, extend=0.5, n_points=300):
         with torch.no_grad():
             x_min, x_max = self.x_torch.min().item(), self.x_torch.max().item()
@@ -221,7 +267,6 @@ class PulsarPINN:
             y_pred = self.model(x_grid).numpy()
         return x_grid.numpy(), y_pred
 
-    # Print learned constants in terminal
     def show_learned_constants(self):
         result = {k: v.item() for k, v in self.learnable_params.items()}
         msg = ", ".join(f"{k} = {v:.10f}" for k, v in result.items())
