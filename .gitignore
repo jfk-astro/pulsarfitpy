@@ -7,7 +7,7 @@ clean_env/
 myenv/
 
 # VS Code Configurations
-.vscode/
+.\.vscode\
 
 # Environment variables and secrets
 .env

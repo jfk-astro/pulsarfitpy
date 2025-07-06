@@ -1,23 +1,31 @@
 # pulsarfitpy
-> pulsarfitpy is a Python library that uses empirical data to approximate visualized polynomial functions for Neutron star parameters through the []Australia Telescope National Facility (ATNF)](https://www.atnf.csiro.au/) pulsar database and psrqpy.
+pulsarfitpy is a Python library that uses empirical data from the [Australia Telescope National Facility (ATNF)](https://www.atnf.csiro.au/) database & psrqpy to predict pulsar behaviors using provided Physics Informed Neural Networks (PINNs). For more data visualization, it also offers accurate polynomial approximations of visualized datasets from two psrqpy query parameters using scikit-learn.
+
+## Prerequisites:
+
+- Python (>=3.12)
+- NumPy
+- Matplotlib
+- psrqpy
+- scikit-learn
+- PyTorch
+- SymPy
+
+Install all dependencies by running the following command in the terminal:
+```bash
+pip install numpy matplotlib psrqpy scikit-learn torch sympy
+```
 
 ## Installation
-> Requirements: []
-1. Clone the repository:
+To install the library, simply run the following in the terminal:
 ``` bash
-git clone https://github.com/jfk-astro/pulsarfitpy.git
+pip install pulsarfitpy
 ```
-
-2. 
-
-## Usage
-> strings are parameters for x and y, options found in [psrqpy parameters](https://www.atnf.csiro.au/research/pulsar/psrcat/psrcat_help.html?type=expert#par_list) 
-
-> integer is maximum polynomial degree searched for
-pulsarfitpy.poly_reg(str, str, int)
-```bash
-pulsarfitpy.poly_reg('AGE', 'BSURF', 5)
+For library usage, import the pulsarfitpy library with:
+```python
+import pulsarfitpy as pf
 ```
+Refer to the documentation for further usage of the library.
 
 ## Contributing
 1. Fork the repository.
@@ -27,4 +35,7 @@ pulsarfitpy.poly_reg('AGE', 'BSURF', 5)
 5. Create a pull request.
 
 ## Credits
-pulsarfitpy was written by Jonathan Sorenson, Om Kasar, Saumil Sharma, and Kason Lai.
+pulsarfitpy was written by Om Kasar, Saumil Sharma, Jonathan Sorenson, and Kason Lai.
+
+## Contact
+For any questions about the repository, email contact.omkasar@gmail.com.

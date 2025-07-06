@@ -227,36 +227,3 @@ class PulsarPINN:
         msg = ", ".join(f"{k} = {v:.10f}" for k, v in result.items())
         print(f"\nLearned constants: {msg}")
         return result
-    
-# Example Usage
-
-# Define alternate symbolic model
-logP2, logEDOT2, logC2 = sp.symbols("logP2 logEDOT2 logC2")
-equation2 = sp.Eq(logEDOT2, logC2 - 4 * logP2)
-
-# Run the model 
-pinn2 = PulsarPINN(
-    x_param="P0",
-    y_param="EDOT",
-    physics_eq=equation2,
-    x_sym=logP2,
-    y_sym=logEDOT2,
-    learn_constant={logC2: 38},  # Starting Guess
-    log_scale=True
-)
-
-pinn2.train(epochs=3000)                    # Train model
-x2_ext, y2_ext = pinn2.predict_extended()   # Predict extended pattern based on PINN
-pinn2.show_learned_constants()              # Print learned constant
-
-# Plot result
-plt.figure(figsize=(8, 6))
-plt.scatter(pinn2.x_raw, pinn2.y_raw, s=10, alpha=0.5, label="Pulsars")
-plt.plot(x2_ext, y2_ext, label="PINN Fit", color="green", linewidth=2)
-plt.xlabel("log10(Period [s])")
-plt.ylabel("log10(Spin-down Power [erg/s])")
-plt.title("PINN Model (Dipole Radiation) with Learned logC2")
-plt.grid(True)
-plt.legend()
-plt.tight_layout()
-plt.show()
