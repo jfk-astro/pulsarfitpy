@@ -17,3 +17,6 @@ myenv/
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Documentation python module for pulsarfitpy
+docs/pulsarfitpy.py

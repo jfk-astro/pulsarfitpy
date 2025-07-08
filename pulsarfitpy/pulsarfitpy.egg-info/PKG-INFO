@@ -1,15 +1,11 @@
 Metadata-Version: 2.4
 Name: pulsarfitpy
-Version: 0.1.0
-Summary: pulsarfitpy is a Python library that uses empirical data from the Australia Telescope National Facility (ATNF) database & psrqpy to predict pulsar behaviors using provided Physics Informed Neural Networks (PINNs). For more data visualization, it also offers accurate polynomial approximations of visualized datasets from two psrqpy query parameters using scikit-learn.
+Version: 0.0.1
+Summary: A Python library to assist with data analysis and theoretical physics frameworks of the Australian National Telescope Facility (ATNF) Pulsar Catalogue.
 Home-page: https://github.com/jfk-astro/pulsarfitpy
 Author: Om Kasar, Saumil Sharma, Jonathan Sorenson, Kason Lai
-Author-email: contact.omkasar@gmail.com
+Author-email: contact.omkasar@gmail.com, sausha310@gmail.com, kasonlai08@gmail.com, jonathan.t.sorenson@gmail.com
 License: GPL-3.0
-Classifier: License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)
-Classifier: Programming Language :: Python :: 3.12
-Classifier: Operating System :: OS Independent
-Classifier: Topic :: Scientific :: Astronomy
 Requires-Python: >=3.12
 Description-Content-Type: text/markdown
 License-File: LICENSE
@@ -20,7 +16,6 @@ Requires-Dist: scikit-learn
 Requires-Dist: sympy
 Dynamic: author
 Dynamic: author-email
-Dynamic: classifier
 Dynamic: description
 Dynamic: description-content-type
 Dynamic: home-page
