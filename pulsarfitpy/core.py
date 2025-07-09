@@ -7,6 +7,7 @@ from sklearn.preprocessing import PolynomialFeatures
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import r2_score
 from psrqpy import QueryATNF
+import matplotlib.pyplot as plt
 
 # Pulsar Polynomial Approximation class
 class PulsarApproximation:
@@ -27,16 +28,16 @@ class PulsarApproximation:
         self.intercept = None
         self.predicted_x = None
         self.predicted_y = None
+        self.r2_scores = {}
 
         self._process_query_data()
 
-    # Filters query for sklearn approximations
     def _process_query_data(self):
         table = self.query.table
         x_vals = np.array(table[self.x_param], dtype=float)
         y_vals = np.array(table[self.y_param], dtype=float)
 
-        # Masking for filtering values
+        # Filter out invalid values
         mask = np.isfinite(x_vals) & np.isfinite(y_vals)
         if self.log_x:
             mask &= x_vals > 0
@@ -47,23 +48,21 @@ class PulsarApproximation:
         y_vals = y_vals[mask]
 
         if len(x_vals) == 0:
-            raise ValueError("No valid data points found: check your query parameters.")
+            raise ValueError("No valid data points found.")
 
         if self.log_x:
-            x_vals = np.log(x_vals)
+            x_vals = np.log10(x_vals)
         if self.log_y:
-            y_vals = np.log(y_vals)
+            y_vals = np.log10(y_vals)
 
         self.x_data = x_vals.reshape(-1, 1)
         self.y_data = y_vals
         self.query_table = table[mask]
 
-    # Fits polynomial to a logarithmic scaled graph
-    def fit_polynomial(self):
-        print("\nFitting Polynomial Approximation...")
+    def fit_polynomial(self, verbose=True):
+        if verbose:
+            print("\nFitting Polynomial Approximation...")
         best_score = float('-inf')
-        best_model = None
-        best_degree = None
 
         for degree in range(1, self.test_degree + 1):
             pipeline = Pipeline([
@@ -73,34 +72,92 @@ class PulsarApproximation:
             pipeline.fit(self.x_data, self.y_data)
             y_pred = pipeline.predict(self.x_data)
             score = r2_score(self.y_data, y_pred)
+            self.r2_scores[degree] = score
 
-            print(f"Degree {degree} → R² Score: {score:.6f}")
+            if verbose:
+                print(f"Degree {degree} → R² Score: {score:.6f}")
 
             if score > best_score:
                 best_score = score
-                best_model = pipeline
-                best_degree = degree
+                self.model = pipeline
+                self.best_degree = degree
 
-        self.model = best_model
-        self.best_degree = best_degree
         self.coefficients = self.model.named_steps['reg'].coef_
         self.intercept = self.model.named_steps['reg'].intercept_
 
         self.predicted_x = np.linspace(self.x_data.min(), self.x_data.max(), 100).reshape(-1, 1)
         self.predicted_y = self.model.predict(self.predicted_x)
 
-    # Generates polynomial expression
     def get_polynomial_expression(self):
         terms = [f"{self.intercept:.10f}"]
         for i, coef in enumerate(self.coefficients[1:], start=1):
             terms.append(f"{coef:.10f} * x**{i}")
         return " + ".join(terms)
 
-    # Prints polynomial expression
     def print_polynomial(self):
         poly_expr = self.get_polynomial_expression()
         print(f"\nBest Polynomial Degree: {self.best_degree}")
-        print(f"\nApproximated Polynomial Function:\nf(x) = {poly_expr}")
+        print(f"Approximated Polynomial Function:\nf(x) = {poly_expr}")
+
+    def plot_r2_scores(self):
+        if not self.r2_scores:
+            raise RuntimeError("Run `fit_polynomial()` first.")
+        degrees = list(self.r2_scores.keys())
+        scores = list(self.r2_scores.values())
+
+        plt.figure(figsize=(8, 5))
+        plt.plot(degrees, scores, marker='o', linestyle='-', color='teal')
+        plt.title("R² Score vs Polynomial Degree")
+        plt.xlabel("Polynomial Degree")
+        plt.ylabel("R² Score")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+    def plot_approximation_curve(self):
+        if self.predicted_x is None or self.predicted_y is None:
+            raise RuntimeError("Run `fit_polynomial()` first.")
+
+        plt.figure(figsize=(8, 5))
+        plt.scatter(self.x_data, self.y_data, s=10, alpha=0.4, label='Pulsars')
+        plt.plot(self.predicted_x, self.predicted_y, color='navy', label=f'Degree {self.best_degree} Fit')
+        plt.xlabel(f"log({self.x_param})" if self.log_x else self.x_param)
+        plt.ylabel(f"log({self.y_param})" if self.log_y else self.y_param)
+        plt.title("Polynomial Fit of Pulsar Data")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+        
+    def plot_combined_analysis(self):
+        if self.predicted_x is None or self.predicted_y is None:
+            raise RuntimeError("Run `fit_polynomial()` first.")
+        if not self.r2_scores:
+            raise RuntimeError("R² scores are empty. Run `fit_polynomial()` first.")
+
+        degrees = list(self.r2_scores.keys())
+        scores = list(self.r2_scores.values())
+
+        fig, axs = plt.subplots(1, 2, figsize=(14, 5))
+
+        # Plot 1: Polynomial Fit
+        axs[0].scatter(self.x_data, self.y_data, s=10, alpha=0.5, label='Pulsars')
+        axs[0].plot(self.predicted_x, self.predicted_y, color='navy', label=f'Degree {self.best_degree} Fit')
+        axs[0].set_xlabel(f"log({self.x_param})" if self.log_x else self.x_param)
+        axs[0].set_ylabel(f"log({self.y_param})" if self.log_y else self.y_param)
+        axs[0].set_title("Polynomial Fit of Pulsar Data")
+        axs[0].legend()
+        axs[0].grid(True)
+
+        # Plot 2: R² vs Degree
+        axs[1].plot(degrees, scores, marker='o', linestyle='-', color='turquoise')
+        axs[1].set_xlabel("Polynomial Degree")
+        axs[1].set_ylabel("R² Score")
+        axs[1].set_title("R² Score vs Polynomial Degree")
+        axs[1].grid(True)
+
+        plt.tight_layout()
+        plt.show()
 
 # sympy Variables to PyTorch residuals
 def symbolic_torch(sym_eq: sp.Eq, x_sym, y_sym):
@@ -198,7 +255,7 @@ class PulsarPINN:
 
         self.x_torch = torch.tensor(self.x_raw, dtype=torch.float64).view(-1, 1).requires_grad_(True)
         self.y_torch = torch.tensor(self.y_raw, dtype=torch.float64).view(-1, 1)
-        
+
     def _build_model(self):
         self.model = nn.Sequential(
             nn.Linear(1, 32),

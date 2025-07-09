@@ -5,12 +5,10 @@ with open("README.md", "r") as f:
 
 setup(
     name='pulsarfitpy',
-    version='0.1.0',
+    version='0.2.0',
     author='Om Kasar, Saumil Sharma, Jonathan Sorenson, Kason Lai',
-    author_email='contact.omkasar@gmail.com',
-    description='pulsarfitpy is a Python library that uses empirical data from the Australia Telescope National Facility (ATNF) ' \
-    'database & psrqpy to predict pulsar behaviors using provided Physics Informed Neural Networks (PINNs). For more data visualization, ' \
-    'it also offers accurate polynomial approximations of visualized datasets from two psrqpy query parameters using scikit-learn.',
+    author_email='contact.omkasar@gmail.com, sausha310@gmail.com, kasonlai08@gmail.com, jonathan.t.sorenson@gmail.com',
+    description='A Python library to assist with data analysis and theoretical physics frameworks of the Australian National Telescope Facility (ATNF) Pulsar Catalogue.',
     long_description=long_description,
     long_description_content_type='text/markdown',
     license='GPL-3.0',
@@ -25,11 +23,5 @@ setup(
         'psrqpy',
         'scikit-learn',
         'sympy'
-    ],
-    classifiers=[
-        'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)',
-        'Programming Language :: Python :: 3.12',
-        'Operating System :: OS Independent',
-        'Topic :: Scientific :: Astronomy',
     ],
 )
