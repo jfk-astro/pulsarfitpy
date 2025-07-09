@@ -1,0 +1,8 @@
+LICENSE
+README.md
+setup.py
+pulsarfitpy/pulsarfitpy.egg-info/PKG-INFO
+pulsarfitpy/pulsarfitpy.egg-info/SOURCES.txt
+pulsarfitpy/pulsarfitpy.egg-info/dependency_links.txt
+pulsarfitpy/pulsarfitpy.egg-info/requires.txt
+pulsarfitpy/pulsarfitpy.egg-info/top_level.txt
