@@ -14,6 +14,7 @@ Requires-Dist: torch
 Requires-Dist: psrqpy
 Requires-Dist: scikit-learn
 Requires-Dist: sympy
+Requires-Dist: taichi
 Dynamic: author
 Dynamic: author-email
 Dynamic: description

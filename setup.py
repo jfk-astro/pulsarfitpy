@@ -22,6 +22,7 @@ setup(
         'torch',
         'psrqpy',
         'scikit-learn',
-        'sympy'
+        'sympy',
+        'taichi'
     ],
 )

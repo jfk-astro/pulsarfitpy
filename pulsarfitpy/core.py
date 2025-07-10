@@ -8,6 +8,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.metrics import r2_score
 from psrqpy import QueryATNF
 import matplotlib.pyplot as plt
+import taichi as ti
 
 # Pulsar Polynomial Approximation class
 class PulsarApproximation:

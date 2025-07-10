@@ -3,3 +3,4 @@ torch
 psrqpy
 scikit-learn
 sympy
+taichi
