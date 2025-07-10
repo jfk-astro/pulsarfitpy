@@ -1,1 +1,1 @@
-from .core import (PulsarPINN, PulsarApproximation, symbolic_torch)
+from .core import (PulsarPINN, PulsarApproximation)

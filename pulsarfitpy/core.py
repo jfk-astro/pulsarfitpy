@@ -70,8 +70,8 @@ class PulsarApproximation:
                 ('reg', LinearRegression())
             ])
             pipeline.fit(self.x_data, self.y_data)
-            y_pred = pipeline.predict(self.x_data)
-            score = r2_score(self.y_data, y_pred)
+            y_PINN = pipeline.predict(self.x_data)
+            score = r2_score(self.y_data, y_PINN)
             self.r2_scores[degree] = score
 
             if verbose:
@@ -106,7 +106,7 @@ class PulsarApproximation:
         scores = list(self.r2_scores.values())
 
         plt.figure(figsize=(8, 5))
-        plt.plot(degrees, scores, marker='o', linestyle='-', color='teal')
+        plt.plot(degrees, scores, marker='o', linestyle='-', color='turquoise')
         plt.title("R² Score vs Polynomial Degree")
         plt.xlabel("Polynomial Degree")
         plt.ylabel("R² Score")
@@ -159,70 +159,27 @@ class PulsarApproximation:
         plt.tight_layout()
         plt.show()
 
-# sympy Variables to PyTorch residuals
-def symbolic_torch(sym_eq: sp.Eq, x_sym, y_sym):
-    """
-    Converts a sympy equation Eq(lhs, rhs) to a PyTorch autograd-compatible residual function.
-
-    Parameters:
-    - sym_eq: sympy Eq(lhs, rhs)
-    - x_sym: sympy Symbol for input (e.g. logP)
-    - y_sym: sympy Symbol for predicted output (e.g. logEDOT)
-
-    Returns:
-    - A function of (x_tensor, y_predicted_tensor) → residual_tensor
-    """
-    # Ensure lhs - rhs = 0 format
-    residual_expr = sp.simplify(sym_eq.lhs - sym_eq.rhs)
-
-    # Convert SymPy to Python function using PyTorch
-    def residual_fn(x_tensor, y_tensor):
-        x = x_tensor.clone().detach().requires_grad_(True)
-        y = y_tensor.clone().detach().requires_grad_(True)
-
-        # Define symbolic expressions in PyTorch manually
-        # Use torch.log10, torch.pow, etc., and substitute values
-        # Assume scalar broadcasting
-        locals_dict = {
-            str(x_sym): x,
-            str(y_sym): y,
-            "log": torch.log10,
-            "pi": torch.tensor(np.pi, dtype=torch.float64),
-        }
-
-        # Recompile SymPy expression into PyTorch
-        residual_lambda = sp.lambdify((x_sym, y_sym), residual_expr, modules='torch')
-        residual = residual_lambda(x, y)
-
-        return residual
-
-    return residual_fn
-
 # Pulsar PINN Prediction Class + Framework
 class PulsarPINN:
     def __init__(self, x_param: str, y_param: str,
-                 physics_eq: sp.Eq,
+                 differential_eq: sp.Eq,
                  x_sym: sp.Symbol, y_sym: sp.Symbol,
-                 learn_constant: dict = None,
+                 learn_constants: dict = None,
                  log_scale=True,
-                 psrqpy_filter_fn=None):
-        """
-        Parameters:
-        - x_param, y_param: ATNF pulsar parameters (e.g., 'P0', 'EDOT')
-        - physics_eq: sympy equation like Eq(lhs, rhs) to represent physics
-        - x_sym, y_sym: symbols used for input/output (e.g., logP, logEDOT)
-        - learn_constant: dict of {symbol: initial_guess} for learnable constants
-        - log_scale: whether to use log10 scaling
-        """
+                 psrqpy_filter_fn=None,
+                 fixed_inputs: dict = None):
+
         self.x_param = x_param
         self.y_param = y_param
-        self.physics_eq = physics_eq
+        self.differential_eq = differential_eq
         self.x_sym = x_sym
         self.y_sym = y_sym
-        self.learn_constant = learn_constant or {}
+        self.learn_constants = learn_constants or {}
         self.log_scale = log_scale
         self.psrqpy_filter_fn = psrqpy_filter_fn
 
+        self.fixed_inputs = fixed_inputs or {}         # symbolic: np arrays
+        self.fixed_torch_inputs = {}                   # str(symbolic): torch tensors
         self.learnable_params = {}
         self.loss_log = {"total": [], "physics": [], "data": []}
 
@@ -250,6 +207,14 @@ class PulsarPINN:
         self.x_torch = torch.tensor(self.x_raw, dtype=torch.float64).view(-1, 1).requires_grad_(True)
         self.y_torch = torch.tensor(self.y_raw, dtype=torch.float64).view(-1, 1)
 
+        # Convert fixed inputs to torch tensors
+        for symbol, array in self.fixed_inputs.items():
+            array = np.asarray(array)
+            if len(array) != len(self.x_raw):
+                raise ValueError(f"Length mismatch for fixed input '{symbol}'")
+            tensor = torch.tensor(array, dtype=torch.float64).view(-1, 1)
+            self.fixed_torch_inputs[str(symbol)] = tensor
+
     def _build_model(self):
         self.model = nn.Sequential(
             nn.Linear(1, 32),
@@ -261,7 +226,7 @@ class PulsarPINN:
 
         self.learnable_params = {
             str(k): torch.nn.Parameter(torch.tensor([v], dtype=torch.float64))
-            for k, v in self.learn_constant.items()
+            for k, v in self.learn_constants.items()
         }
 
         self.optimizer = torch.optim.Adam(
@@ -270,16 +235,20 @@ class PulsarPINN:
         )
 
     def _convert_symbolic_to_residual(self):
-        residual_expr = sp.simplify(self.physics_eq.lhs - self.physics_eq.rhs)
-        symbols = [self.x_sym, self.y_sym] + list(self.learn_constant.keys())
+        residual_expr = sp.simplify(self.differential_eq.lhs - self.differential_eq.rhs)
+        symbols = [self.x_sym, self.y_sym] + list(self.learn_constants.keys()) + list(self.fixed_inputs.keys())
 
         def residual_fn(x_tensor, y_tensor):
             subs = {
                 str(self.x_sym): x_tensor,
                 str(self.y_sym): y_tensor,
             }
+
             for k, param in self.learnable_params.items():
-                subs[k] = param
+                subs[str(k)] = param
+
+            for k, tensor in self.fixed_torch_inputs.items():
+                subs[k] = tensor
 
             expr_fn = sp.lambdify(symbols, residual_expr, modules="torch")
             inputs = [subs[str(s)] for s in symbols]
@@ -288,11 +257,12 @@ class PulsarPINN:
         self.physics_residual_fn = residual_fn
 
     def train(self, epochs=3000):
+        print("Training PINN...\n")
         for epoch in range(epochs):
-            y_pred = self.model(self.x_torch)
-            residual = self.physics_residual_fn(self.x_torch, y_pred)
+            y_PINN = self.model(self.x_torch)
+            residual = self.physics_residual_fn(self.x_torch, y_PINN)
             loss_phys = torch.mean(residual ** 2)
-            loss_data = torch.mean((y_pred - self.y_torch) ** 2)
+            loss_data = torch.mean((y_PINN - self.y_torch) ** 2)
             loss = loss_phys + loss_data
 
             self.optimizer.zero_grad()
@@ -312,13 +282,13 @@ class PulsarPINN:
     def predict_extended(self, extend=0.5, n_points=300):
         with torch.no_grad():
             x_min, x_max = self.x_torch.min().item(), self.x_torch.max().item()
-            x_grid = torch.linspace(x_min - extend, x_max + extend, n_points, dtype=torch.float64).view(-1, 1)
-            y_pred = self.model(x_grid).numpy()
-        return x_grid.numpy(), y_pred
+            x_PINN = torch.linspace(x_min - extend, x_max + extend, n_points, dtype=torch.float64).view(-1, 1)
+            y_PINN = self.model(x_PINN).numpy()
+        return x_PINN.numpy(), y_PINN
 
     def show_learned_constants(self):
         result = {k: v.item() for k, v in self.learnable_params.items()}
-        msg = ", ".join(f"{k} = {v:.10f}" for k, v in result.items())
+        msg = ", ".join(f"{k} = {v:.25f}" for k, v in result.items())
         print(f"\nLearned constants: {msg}")
         return result
 
@@ -338,86 +308,44 @@ class PulsarPINN:
         )
 
     def recommend_initial_guesses(self, method="mean"):
-        """
-        Recommend initial guesses for learnable constants.
-        
-        Parameters:
-        - method: str, one of:
-            'mean'        → y/x scaling
-            'regression'  → LinearRegression fit
-            'ols_loglog'  → y = ax + b in log-log space
-            'dimensional' → heuristic scaling inverse to input/output
-            'zero'        → all constants set to zero
-            'manual'      → prompts user for each constant
-        
-        Returns:
-        - Dict of {symbol: value}
-        """
         x = self.x_raw
         y = self.y_raw
         recommended = {}
 
         if method == "mean":
             scale_factor = np.mean(y) / np.mean(x)
-            for k in self.learn_constant:
+            for k in self.learn_constants:
                 recommended[k] = scale_factor
 
         elif method == "regression":
-            from sklearn.linear_model import LinearRegression
             model = LinearRegression().fit(x.reshape(-1, 1), y)
             slope = model.coef_[0]
             intercept = model.intercept_
-            for k in self.learn_constant:
+            for k in self.learn_constants:
                 name = str(k).lower()
                 recommended[k] = slope if "slope" in name or "n" in name else intercept
 
         elif method == "ols_loglog":
-            # Use OLS in log-log space
             X = np.vstack([x, np.ones_like(x)]).T
             coeffs = np.linalg.lstsq(X, y, rcond=None)[0]
             slope, intercept = coeffs
-            for k in self.learn_constant:
+            for k in self.learn_constants:
                 name = str(k).lower()
                 recommended[k] = slope if "slope" in name or "n" in name else intercept
 
-        elif method == "dimensional":
-            for k in self.learn_constant:
-                name = str(k).lower()
-                if "k" in name:
-                    recommended[k] = 1e-15
-                elif "b" in name:
-                    recommended[k] = 1e12
-                elif "i" in name:
-                    recommended[k] = 1e45
-                elif "n" in name:
-                    recommended[k] = 3.0
-                else:
-                    recommended[k] = 1.0  # fallback
-
         elif method == "zero":
-            for k in self.learn_constant:
+            for k in self.learn_constants:
                 recommended[k] = 0.0
 
-        elif method == "manual":
-            for k in self.learn_constant:
-                while True:
-                    try:
-                        val = float(input(f"Enter initial guess for constant {k}: "))
-                        recommended[k] = val
-                        break
-                    except ValueError:
-                        print("Invalid input. Please enter a number.")
-
         else:
-            raise ValueError(f"Unknown method '{method}'. Valid options: "
-                            "'mean', 'regression', 'ols_loglog', 'dimensional', 'zero', 'manual'")
+            raise ValueError(f"Unknown method '{method}'.")
 
         print("Recommended initial guesses:")
         for k, v in recommended.items():
             print(f"  {k} ≈ {v:.6e}")
         return recommended
 
-    def plot_loss_curve(self, log=True):
+    def plot_PINN_loss(self, log=True):
         plt.figure(figsize=(8, 5))
         plt.plot(self.loss_log["total"], label='Total Loss', linewidth=2)
         plt.plot(self.loss_log["physics"], label='Physics Loss', linestyle='--')
@@ -432,14 +360,14 @@ class PulsarPINN:
         plt.tight_layout()
         plt.show()
 
-    def plot_prediction_vs_data(self):
-        x_grid, y_pred = self.predict_extended()
+    def plot_PINN(self):
+        x_PINN, y_PINN = self.predict_extended()
         x_data = self.x_raw
         y_data = self.y_raw
 
         plt.figure(figsize=(8, 5))
-        plt.scatter(x_data, y_data, label='ATNF Data', s=15, alpha=0.7)
-        plt.plot(x_grid, y_pred, color='red', label='PINN Prediction', linewidth=2)
+        plt.scatter(x_data, y_data, label='ATNF Data', s=10, alpha=0.5)
+        plt.plot(x_PINN, y_PINN, color='red', label='PINN Prediction', linewidth=2)
         plt.xlabel(f"log10({self.x_param})" if self.log_scale else self.x_param)
         plt.ylabel(f"log10({self.y_param})" if self.log_scale else self.y_param)
         plt.title('PINN Prediction vs Pulsar Data')

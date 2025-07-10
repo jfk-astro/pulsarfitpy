@@ -20,3 +20,6 @@ __pycache__/
 
 # Documentation python module for pulsarfitpy
 docs/pulsarfitpy.py
+
+# Jupyter Checkpoints
+docs/.ipynb_checkpoints
