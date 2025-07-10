@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: pulsarfitpy
-Version: 0.2.2
+Version: 0.2.3
 Summary: A Python library to assist with data analysis and theoretical physics frameworks of the Australian National Telescope Facility (ATNF) Pulsar Catalogue.
 Home-page: https://github.com/jfk-astro/pulsarfitpy
 Author: Om Kasar, Saumil Sharma, Jonathan Sorenson, Kason Lai
