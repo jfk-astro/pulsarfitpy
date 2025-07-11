@@ -1,1 +1,1 @@
-from .core import (PulsarPINN, PulsarApproximation, PulsarTaichiVisualizer)
+from .src import (PulsarPINN, PulsarApproximation)

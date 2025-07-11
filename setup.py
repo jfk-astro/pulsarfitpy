@@ -5,7 +5,7 @@ with open("README.md", "r") as f:
 
 setup(
     name='pulsarfitpy',
-    version='0.2.3',
+    version='0.2.4',
     author='Om Kasar, Saumil Sharma, Jonathan Sorenson, Kason Lai',
     author_email='contact.omkasar@gmail.com, sausha310@gmail.com, kasonlai08@gmail.com, jonathan.t.sorenson@gmail.com',
     description='A Python library to assist with data analysis and theoretical physics frameworks of the Australian National Telescope Facility (ATNF) Pulsar Catalogue.',
@@ -23,6 +23,6 @@ setup(
         'psrqpy',
         'scikit-learn',
         'sympy',
-        'taichi'
+        'matplotlib'
     ],
 )

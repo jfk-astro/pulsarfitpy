@@ -1,4 +1,4 @@
-# pulsarfitpy
+# pulsarfitpy: An Efficient Physics Informed Framework for Pulsar Analysis 
 pulsarfitpy is a Python library that uses empirical data from the [Australia Telescope National Facility (ATNF)](https://www.atnf.csiro.au/) database & psrqpy to predict pulsar behaviors using provided Physics Informed Neural Networks (PINNs). For more data visualization, it also offers accurate polynomial approximations of visualized datasets from two psrqpy query parameters using scikit-learn.
 
 ## Prerequisites:
