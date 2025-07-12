@@ -1,0 +1,10 @@
+LICENSE
+README.md
+pyproject.toml
+src/pulsarfitpy/__init__.py
+src/pulsarfitpy/core.py
+src/pulsarfitpy.egg-info/PKG-INFO
+src/pulsarfitpy.egg-info/SOURCES.txt
+src/pulsarfitpy.egg-info/dependency_links.txt
+src/pulsarfitpy.egg-info/requires.txt
+src/pulsarfitpy.egg-info/top_level.txt

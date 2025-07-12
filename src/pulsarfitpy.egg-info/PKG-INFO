@@ -1,0 +1,14 @@
+Metadata-Version: 2.4
+Name: pulsarfitpy
+Version: 0.2.5
+Summary: A Python library to assist with data analysis and theoretical physics frameworks of the Australian National Telescope Facility (ATNF) Pulsar Catalogue.
+Author-email: Om Kasar <contact.omkasar@gmail.com>, Saumil Sharma <sausha310@gmail.com>, Jonathan Sorenson <jonathan.t.sorenson@gmail.com>, Kason Lai <kasonlai08@gmail.com>
+Requires-Python: >=3.12
+License-File: LICENSE
+Requires-Dist: numpy
+Requires-Dist: torch
+Requires-Dist: psrqpy
+Requires-Dist: scikit-learn
+Requires-Dist: sympy
+Requires-Dist: matplotlib
+Dynamic: license-file

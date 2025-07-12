@@ -178,8 +178,8 @@ class PulsarPINN:
         self.log_scale = log_scale
         self.psrqpy_filter_fn = psrqpy_filter_fn
 
-        self.fixed_inputs = fixed_inputs or {} 
-        self.fixed_torch_inputs = {}
+        self.fixed_inputs = fixed_inputs or {}         # symbolic: np arrays
+        self.fixed_torch_inputs = {}                   # str(symbolic): torch tensors
         self.learnable_params = {}
         self.loss_log = {"total": [], "physics": [], "data": []}
 
@@ -221,10 +221,7 @@ class PulsarPINN:
             nn.Tanh(),
             nn.Linear(32, 32),
             nn.Tanh(),
-            nn.Linear(32, 16),
-            nn.Tanh(),
-            nn.Linear(16, 1),
-            nn.Tanh()
+            nn.Linear(32, 1)
         ).double()
 
         self.learnable_params = {
@@ -281,7 +278,8 @@ class PulsarPINN:
                     f"{k}={v.item():.4f}" for k, v in self.learnable_params.items()
                 )
                 print(f"Epoch {epoch}: Loss = {loss.item():.10e} | {const_str}")
-        
+
+        # Print Result        
         result = {k: v.item() for k, v in self.learnable_params.items()}
         msg = ", ".join(f"{k} = {v:.25f}" for k, v in result.items())
         print(f"\nLearned constants: {msg}")
@@ -350,6 +348,21 @@ class PulsarPINN:
             print(f"  {k} ≈ {v:.6e}")
         return recommended
 
+    def plot_PINN_loss(self, log=True):
+        plt.figure(figsize=(8, 5))
+        plt.plot(self.loss_log["total"], label='Total Loss', linewidth=2)
+        plt.plot(self.loss_log["physics"], label='Physics Loss', linestyle='--')
+        plt.plot(self.loss_log["data"], label='Data Loss', linestyle='--')
+        if log:
+            plt.yscale('log')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.title('Training Loss vs Epoch')
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
     def plot_PINN(self):
         x_PINN, y_PINN = self.predict_extended()
         x_data = self.x_raw
@@ -361,21 +374,6 @@ class PulsarPINN:
         plt.xlabel(f"log10({self.x_param})" if self.log_scale else self.x_param)
         plt.ylabel(f"log10({self.y_param})" if self.log_scale else self.y_param)
         plt.title('PINN Prediction vs Pulsar Data')
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
-
-    def plot_PINN_loss(self, log=True):
-        plt.figure(figsize=(8, 5))
-        plt.plot(self.loss_log["total"], label='Total Loss', linewidth=2)
-        plt.plot(self.loss_log["physics"], label='Physics Loss', linestyle='--')
-        plt.plot(self.loss_log["data"], label='Data Loss', linestyle='--')
-        if log:
-            plt.yscale('log')
-        plt.xlabel('Epoch')
-        plt.ylabel('Loss')
-        plt.title('Training Loss vs Epoch')
         plt.legend()
         plt.grid(True)
         plt.tight_layout()

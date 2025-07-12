@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pulsarfitpy"
+version = "0.2.5"
+description = "A Python library to assist with data analysis and theoretical physics frameworks of the Australian National Telescope Facility (ATNF) Pulsar Catalogue."
+authors = [
+    { name="Om Kasar", email="contact.omkasar@gmail.com" }, 
+    { name="Saumil Sharma", email="sausha310@gmail.com" }, 
+    { name="Jonathan Sorenson", email="jonathan.t.sorenson@gmail.com" },
+    { name="Kason Lai", email="kasonlai08@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "numpy",
+    "torch",
+    "psrqpy",
+    "scikit-learn",
+    "sympy",
+    "matplotlib"
+]
+
+[tool.setuptools]
+packages = { find = { where = ["src"] } }
+
+[tool.setuptools.package-dir]
+"" = "src"
