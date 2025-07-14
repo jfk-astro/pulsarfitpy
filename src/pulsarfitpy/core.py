@@ -219,9 +219,9 @@ class PulsarPINN:
         self.model = nn.Sequential(
             nn.Linear(1, 32),
             nn.Tanh(),
-            nn.Linear(32, 32),
+            nn.Linear(32, 16),
             nn.Tanh(),
-            nn.Linear(32, 1)
+            nn.Linear(16, 1)
         ).double()
 
         self.learnable_params = {
