@@ -39,6 +39,18 @@ import pulsarfitpy as pf
 ```  
 Please refer to the documentation for further usage of the library.
 
+## Using an API
+[PulsarsAPI](https://github.com/jfk-astro/PulsarsAPI), another project from the JFK Astronomy Club, has a feature allowing you to access pulsarfitpy from an API. PulsarsAPI offers the ability to retrieve data about pulsars through endpoints such as `/api/pulsars/{name}` and `/api/pulsars/{id}`.
+
+Furthermore, PulsarsAPI allows you to use pulsarfitpy through the `/api/pulsars/fit-function` endpoint. When calling the embedded pulsarfitpy within PulsarsAPI, you will have to pass the following arguments:
+| Type | Resource |
+| --- | --- |
+| String | x parameter |
+| String | y parameter |
+| Integer | test degree |
+| Boolean | log x |
+| Boolean | log y|
+
 ## Contributing
 **Please follow the following steps in order when contributing to the library.**  
 1. Fork the repository.
