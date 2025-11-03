@@ -238,6 +238,11 @@ class PulsarPINN:
         residual_expr = sp.simplify(self.differential_eq.lhs - self.differential_eq.rhs)
         symbols = [self.x_sym, self.y_sym] + list(self.learn_constants.keys()) + list(self.fixed_inputs.keys())
 
+        try:
+            expr_fn = sp.lambdify(symbols, residual_expr, modules="torch")
+        except Exception:
+            expr_fn = sp.lambdify(symbols, residual_expr, modules="numpy")
+
         def residual_fn(x_tensor, y_tensor):
             subs = {
                 str(self.x_sym): x_tensor,
@@ -250,7 +255,6 @@ class PulsarPINN:
             for k, tensor in self.fixed_torch_inputs.items():
                 subs[k] = tensor
 
-            expr_fn = sp.lambdify(symbols, residual_expr, modules="torch")
             inputs = [subs[str(s)] for s in symbols]
             return expr_fn(*inputs)
 
