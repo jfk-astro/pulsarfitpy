@@ -234,7 +234,8 @@ class PulsarPINN:
                  train_split=0.70,
                  val_split=0.15,
                  test_split=0.15,
-                 random_seed=42):
+                 random_seed=42,
+                 hidden_layers=None):  # NEW PARAMETER
 
         self.x_param = x_param
         self.y_param = y_param
@@ -248,6 +249,7 @@ class PulsarPINN:
         self.val_split = val_split
         self.test_split = test_split
         self.random_seed = random_seed
+        self.hidden_layers = hidden_layers or [32, 16]  # Default architecture
 
         self.fixed_inputs = fixed_inputs or {}
         self.fixed_torch_inputs = {}
@@ -257,7 +259,8 @@ class PulsarPINN:
         self.learnable_params = {}
         self.loss_log = {
             "train_total": [], "train_physics": [], "train_data": [],
-            "val_total": [], "val_physics": [], "val_data": []
+            "val_total": [], "val_physics": [], "val_data": [],
+            "total": [], "physics": [], "data": []  # For backward compatibility
         }
         self.test_metrics = {}
 
@@ -338,13 +341,21 @@ class PulsarPINN:
         self.fixed_torch_inputs = self.fixed_torch_inputs_train
 
     def _build_model(self):
-        self.model = nn.Sequential(
-            nn.Linear(1, 32),
-            nn.Tanh(),
-            nn.Linear(32, 16),
-            nn.Tanh(),
-            nn.Linear(16, 1)
-        ).double()
+        # Build network layers dynamically based on hidden_layers
+        layers = []
+        input_size = 1
+        
+        for hidden_size in self.hidden_layers:
+            layers.append(nn.Linear(input_size, hidden_size))
+            layers.append(nn.Tanh())
+            input_size = hidden_size
+        
+        # Output layer
+        layers.append(nn.Linear(input_size, 1))
+        
+        self.model = nn.Sequential(*layers).double()
+        
+        logger.info(f"Built neural network with architecture: [1] -> {self.hidden_layers} -> [1]")
 
         self.learnable_params = {
             str(k): torch.nn.Parameter(torch.tensor([v], dtype=torch.float64))
@@ -406,6 +417,10 @@ class PulsarPINN:
             self.loss_log["train_total"].append(loss.item())
             self.loss_log["train_physics"].append(loss_phys.item())
             self.loss_log["train_data"].append(loss_data.item())
+            # Backward compatibility
+            self.loss_log["total"].append(loss.item())
+            self.loss_log["physics"].append(loss_phys.item())
+            self.loss_log["data"].append(loss_data.item())
 
             # Validation
             if epoch % val_interval == 0:
