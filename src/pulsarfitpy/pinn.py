@@ -1,72 +1,5 @@
-"""
-Physics-Informed Neural Networks (PINNs) for pulsar data.
-
-This module provides the PulsarPINN class for learning physical constants
-from pulsar data using physics-informed neural networks with PyTorch.
-"""
-
-import logging
-import numpy as np
-import torch
-import torch.nn as nn
-import sympy as sp
-import matplotlib.pyplot as plt
-
-from sklearn.linear_model import LinearRegression
-from psrqpy import QueryATNF
-
-logger = logging.getLogger(__name__)
-
-
+# Pulsar PINN Prediction Class + Framework
 class PulsarPINN:
-    """
-    Physics-Informed Neural Network for pulsar parameter relationships.
-    
-    This class combines neural networks with physics constraints (differential
-    equations) to learn physical constants from pulsar data while respecting
-    known physics.
-    
-    Parameters
-    ----------
-    x_param : str
-        Name of the x-axis parameter from ATNF catalogue
-    y_param : str
-        Name of the y-axis parameter from ATNF catalogue
-    differential_eq : sympy.Eq
-        Differential equation as physics constraint
-    x_sym : sympy.Symbol
-        Symbolic variable for x parameter
-    y_sym : sympy.Symbol
-        Symbolic variable for y parameter
-    learn_constants : dict, optional
-        Dictionary of constants to learn {symbol_name: initial_value}
-    log_scale : bool, optional
-        Whether to use log10 scale for data (default: True)
-    psrqpy_filter_fn : callable, optional
-        Function to filter data: filter_fn(x, y) -> boolean mask
-    fixed_inputs : dict, optional
-        Dictionary of fixed symbolic inputs {symbol: array}
-    train_split : float, optional
-        Fraction of data for training (default: 0.70)
-    val_split : float, optional
-        Fraction of data for validation (default: 0.15)
-    test_split : float, optional
-        Fraction of data for test (default: 0.15)
-    random_seed : int, optional
-        Random seed for reproducibility (default: 42)
-        
-    Attributes
-    ----------
-    model : nn.Sequential
-        Neural network model
-    learnable_params : dict
-        Dictionary of learnable constant parameters
-    loss_log : dict
-        Training and validation loss history
-    test_metrics : dict
-        Final test set evaluation metrics
-    """
-    
     def __init__(self, x_param: str, y_param: str,
                  differential_eq: sp.Eq,
                  x_sym: sp.Symbol, y_sym: sp.Symbol,
@@ -77,7 +10,8 @@ class PulsarPINN:
                  train_split=0.70,
                  val_split=0.15,
                  test_split=0.15,
-                 random_seed=42):
+                 random_seed=42,
+                 hidden_layers=None):  # NEW PARAMETER
 
         self.x_param = x_param
         self.y_param = y_param
@@ -91,6 +25,7 @@ class PulsarPINN:
         self.val_split = val_split
         self.test_split = test_split
         self.random_seed = random_seed
+        self.hidden_layers = hidden_layers or [32, 16]  # Default architecture
 
         self.fixed_inputs = fixed_inputs or {}
         self.fixed_torch_inputs = {}
@@ -100,7 +35,8 @@ class PulsarPINN:
         self.learnable_params = {}
         self.loss_log = {
             "train_total": [], "train_physics": [], "train_data": [],
-            "val_total": [], "val_physics": [], "val_data": []
+            "val_total": [], "val_physics": [], "val_data": [],
+            "total": [], "physics": [], "data": []  # For backward compatibility
         }
         self.test_metrics = {}
 
@@ -109,7 +45,6 @@ class PulsarPINN:
         self._convert_symbolic_to_residual()
 
     def _prepare_data(self):
-        """Fetch and prepare pulsar data with train/val/test split."""
         query = QueryATNF(params=[self.x_param, self.y_param])
         table = query.table
 
@@ -182,14 +117,21 @@ class PulsarPINN:
         self.fixed_torch_inputs = self.fixed_torch_inputs_train
 
     def _build_model(self):
-        """Build the neural network architecture."""
-        self.model = nn.Sequential(
-            nn.Linear(1, 32),
-            nn.Tanh(),
-            nn.Linear(32, 16),
-            nn.Tanh(),
-            nn.Linear(16, 1)
-        ).double()
+        # Build network layers dynamically based on hidden_layers
+        layers = []
+        input_size = 1
+        
+        for hidden_size in self.hidden_layers:
+            layers.append(nn.Linear(input_size, hidden_size))
+            layers.append(nn.Tanh())
+            input_size = hidden_size
+        
+        # Output layer
+        layers.append(nn.Linear(input_size, 1))
+        
+        self.model = nn.Sequential(*layers).double()
+        
+        logger.info(f"Built neural network with architecture: [1] -> {self.hidden_layers} -> [1]")
 
         self.learnable_params = {
             str(k): torch.nn.Parameter(torch.tensor([v], dtype=torch.float64))
@@ -202,7 +144,6 @@ class PulsarPINN:
         )
 
     def _convert_symbolic_to_residual(self):
-        """Convert symbolic differential equation to a callable residual function."""
         residual_expr = sp.simplify(self.differential_eq.lhs - self.differential_eq.rhs)
         symbols = [self.x_sym, self.y_sym] + list(self.learn_constants.keys()) + list(self.fixed_inputs.keys())
 
@@ -232,25 +173,13 @@ class PulsarPINN:
         self.physics_residual_fn = residual_fn
 
     def train(self, epochs=3000, val_interval=100, early_stopping_patience=None):
-        """
-        Train the PINN model.
-        
-        Parameters
-        ----------
-        epochs : int, optional
-            Number of training epochs (default: 3000)
-        val_interval : int, optional
-            Validation check interval in epochs (default: 100)
-        early_stopping_patience : int, optional
-            Stop if validation loss doesn't improve for N checks (default: None)
-        """
         logger.info("Training PINN...")
         best_val_loss = float('inf')
         patience_counter = 0
         
         for epoch in range(epochs):
-            # Training step
             self.model.train()
+
             y_PINN = self.model(self.x_torch)
             residual = self.physics_residual_fn(self.x_torch, y_PINN, self.fixed_torch_inputs_train)
             loss_phys = torch.mean(residual ** 2)
@@ -264,8 +193,12 @@ class PulsarPINN:
             self.loss_log["train_total"].append(loss.item())
             self.loss_log["train_physics"].append(loss_phys.item())
             self.loss_log["train_data"].append(loss_data.item())
+            # Backward compatibility
+            self.loss_log["total"].append(loss.item())
+            self.loss_log["physics"].append(loss_phys.item())
+            self.loss_log["data"].append(loss_data.item())
 
-            # Validation step
+            # Validation
             if epoch % val_interval == 0:
                 self.model.eval()
                 with torch.no_grad():
@@ -284,7 +217,7 @@ class PulsarPINN:
                 )
                 logger.info(f"Epoch {epoch}: Train Loss = {loss.item():.6e}, Val Loss = {val_loss.item():.6e} | {const_str}")
                 
-                # Early stopping check
+                # Check for early stops
                 if early_stopping_patience is not None:
                     if val_loss.item() < best_val_loss:
                         best_val_loss = val_loss.item()
@@ -300,25 +233,13 @@ class PulsarPINN:
                 )
                 logger.debug(f"Epoch {epoch}: Train Loss = {loss.item():.6e} | {const_str}")
 
-        # Print Result (keep as print - important final output)
+        # Display results..
         result = {k: v.item() for k, v in self.learnable_params.items()}
         msg = ", ".join(f"{k} = {v:.25f}" for k, v in result.items())
         print(f"\nLearned constants: {msg}")
 
     def evaluate_test_set(self, verbose=True):
-        """
-        Evaluate the trained model on the held-out test set.
-        
-        Parameters
-        ----------
-        verbose : bool, optional
-            Whether to print detailed evaluation (default: True)
-            
-        Returns
-        -------
-        dict
-            Dictionary containing test metrics
-        """
+        """Evaluate the trained model on the held-out test set."""
         self.model.eval()
         with torch.no_grad():
             y_test_pred = self.model(self.x_test_torch)
@@ -327,20 +248,20 @@ class PulsarPINN:
             test_loss_data = torch.mean((y_test_pred - self.y_test_torch) ** 2)
             test_loss_total = test_loss_phys + test_loss_data
             
-            # Calculate R² score
+            # R^2
             y_test_mean = torch.mean(self.y_test_torch)
             ss_tot = torch.sum((self.y_test_torch - y_test_mean) ** 2)
             ss_res = torch.sum((self.y_test_torch - y_test_pred) ** 2)
             r2_score = 1 - (ss_res / ss_tot)
             
-            # Calculate metrics for validation set
+            # Validation Metrics
             y_val_pred = self.model(self.x_val_torch)
             y_val_mean = torch.mean(self.y_val_torch)
             ss_tot_val = torch.sum((self.y_val_torch - y_val_mean) ** 2)
             ss_res_val = torch.sum((self.y_val_torch - y_val_pred) ** 2)
             r2_val = 1 - (ss_res_val / ss_tot_val)
             
-            # Calculate metrics for training set
+            # Training Metrics
             y_train_pred = self.model(self.x_torch)
             y_train_mean = torch.mean(self.y_torch)
             ss_tot_train = torch.sum((self.y_torch - y_train_mean) ** 2)
@@ -376,26 +297,12 @@ class PulsarPINN:
                 print(f"  Training R² - Test R² = {self.test_metrics['train_r2'] - self.test_metrics['test_r2']:.4f}")
             else:
                 print(f"\n✓ Good generalization: Train/Test R² difference = {self.test_metrics['train_r2'] - self.test_metrics['test_r2']:.4f}")
+                
             print("="*60)
         
         return self.test_metrics
 
     def predict_extended(self, extend=0.5, n_points=300):
-        """
-        Generate predictions over an extended range.
-        
-        Parameters
-        ----------
-        extend : float, optional
-            How much to extend beyond data range (default: 0.5)
-        n_points : int, optional
-            Number of prediction points (default: 300)
-            
-        Returns
-        -------
-        tuple
-            (x_values, y_predictions) as numpy arrays
-        """
         with torch.no_grad():
             x_min, x_max = self.x_torch.min().item(), self.x_torch.max().item()
             x_PINN = torch.linspace(x_min - extend, x_max + extend, n_points, dtype=torch.float64).view(-1, 1)
@@ -403,26 +310,10 @@ class PulsarPINN:
         return x_PINN.numpy(), y_PINN
 
     def store_learned_constants(self):
-        """
-        Store the learned constants.
-        
-        Returns
-        -------
-        dict
-            Dictionary of learned constant values
-        """
         result = {k: v.item() for k, v in self.learnable_params.items()}
         return result
 
     def set_learn_constants(self, new_constants: dict):
-        """
-        Update learnable constants.
-        
-        Parameters
-        ----------
-        new_constants : dict
-            Dictionary of constants to add or update {name: value}
-        """
         for k, v in new_constants.items():
             if k not in self.learnable_params:
                 param = torch.nn.Parameter(torch.tensor([v], dtype=torch.float64))
@@ -438,19 +329,6 @@ class PulsarPINN:
         )
 
     def recommend_initial_guesses(self, method="mean"):
-        """
-        Recommend initial guesses for learnable constants based on training data.
-        
-        Parameters
-        ----------
-        method : str, optional
-            Method to use: 'mean', 'regression', 'ols_loglog', 'zero' (default: 'mean')
-            
-        Returns
-        -------
-        dict
-            Dictionary of recommended initial values
-        """
         x = self.x_train
         y = self.y_train
         recommended = {}
@@ -489,50 +367,40 @@ class PulsarPINN:
         return recommended
 
     def plot_PINN_loss(self, log=True):
-        """
-        Plot training and validation loss curves.
-        
-        Parameters
-        ----------
-        log : bool, optional
-            Whether to use log scale for y-axis (default: True)
-        """
+        """Plot training and validation loss curves."""
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
         
-        # Plot 1: Total loss
+        # Total Loss
         epochs_train = range(len(self.loss_log["train_total"]))
         ax1.plot(epochs_train, self.loss_log["train_total"], label='Train Total', linewidth=2, alpha=0.8)
         
         if self.loss_log["val_total"]:
-            # Val loss is recorded at intervals
             val_interval = len(self.loss_log["train_total"]) // len(self.loss_log["val_total"])
             epochs_val = range(0, len(self.loss_log["train_total"]), val_interval)
             epochs_val = list(epochs_val)[:len(self.loss_log["val_total"])]
-            ax1.plot(epochs_val, self.loss_log["val_total"], label='Val Total', 
-                    linewidth=2, marker='o', markersize=4, alpha=0.8)
+
+            ax1.plot(epochs_val, self.loss_log["val_total"], label='Val Total', linewidth=2, marker='o', markersize=4, alpha=0.8)
         
         if log:
             ax1.set_yscale('log')
+
         ax1.set_xlabel('Epoch')
         ax1.set_ylabel('Total Loss')
         ax1.set_title('Total Loss: Train vs Validation')
         ax1.legend()
         ax1.grid(True, alpha=0.3)
         
-        # Plot 2: Physics and Data loss components
-        ax2.plot(epochs_train, self.loss_log["train_physics"], 
-                label='Train Physics', linestyle='--', alpha=0.7)
-        ax2.plot(epochs_train, self.loss_log["train_data"], 
-                label='Train Data', linestyle='--', alpha=0.7)
+        # Physics & Data Loss
+        ax2.plot(epochs_train, self.loss_log["train_physics"], label='Train Physics', linestyle='--', alpha=0.7)
+        ax2.plot(epochs_train, self.loss_log["train_data"], label='Train Data', linestyle='--', alpha=0.7)
         
         if self.loss_log["val_physics"]:
-            ax2.plot(epochs_val, self.loss_log["val_physics"], 
-                    label='Val Physics', linestyle=':', marker='s', markersize=3, alpha=0.7)
-            ax2.plot(epochs_val, self.loss_log["val_data"], 
-                    label='Val Data', linestyle=':', marker='s', markersize=3, alpha=0.7)
+            ax2.plot(epochs_val, self.loss_log["val_physics"], label='Val Physics', linestyle=':', marker='s', markersize=3, alpha=0.7)
+            ax2.plot(epochs_val, self.loss_log["val_data"], label='Val Data', linestyle=':', marker='s', markersize=3, alpha=0.7)
         
         if log:
             ax2.set_yscale('log')
+
         ax2.set_xlabel('Epoch')
         ax2.set_ylabel('Loss')
         ax2.set_title('Loss Components')
@@ -543,25 +411,15 @@ class PulsarPINN:
         plt.show()
 
     def plot_PINN(self, show_splits=True):
-        """
-        Plot PINN predictions with optional train/val/test split visualization.
-        
-        Parameters
-        ----------
-        show_splits : bool, optional
-            Whether to color-code the data splits (default: True)
-        """
+        """Plot PINN predictions with optional train/val/test split visualization."""
         x_PINN, y_PINN = self.predict_extended()
         
         plt.figure(figsize=(10, 6))
         
         if show_splits:
-            plt.scatter(self.x_train, self.y_train, label=f'Train (n={len(self.x_train)})', 
-                       s=10, alpha=0.5, c='blue')
-            plt.scatter(self.x_val, self.y_val, label=f'Val (n={len(self.x_val)})', 
-                       s=10, alpha=0.5, c='orange')
-            plt.scatter(self.x_test, self.y_test, label=f'Test (n={len(self.x_test)})', 
-                       s=10, alpha=0.5, c='green')
+            plt.scatter(self.x_train, self.y_train, label=f'Train (n={len(self.x_train)})', s=10, alpha=0.5, c='blue')
+            plt.scatter(self.x_val, self.y_val, label=f'Val (n={len(self.x_val)})', s=10, alpha=0.5, c='orange')
+            plt.scatter(self.x_test, self.y_test, label=f'Test (n={len(self.x_test)})', s=10, alpha=0.5, c='green')
         else:
             plt.scatter(self.x_all, self.y_all, label='ATNF Data', s=10, alpha=0.5)
             
@@ -572,6 +430,7 @@ class PulsarPINN:
         title = 'PINN Prediction vs Pulsar Data'
         if hasattr(self, 'test_metrics') and self.test_metrics:
             title += f"\nTest R² = {self.test_metrics['test_r2']:.4f}"
+
         plt.title(title)
         plt.legend()
         plt.grid(True, alpha=0.3)
