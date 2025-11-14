@@ -1,5 +1,110 @@
-# Pulsar PINN Prediction Class + Framework
+"""
+Physics-Informed Neural Networks (PINNs) for pulsar data analysis.
+
+This module implements the PulsarPINN class for learning physical constants
+from pulsar data while enforcing physics constraints through differential equations.
+Uses PyTorch for automatic differentiation and neural network training.
+"""
+
+import logging
+import numpy as np
+import torch
+import torch.nn as nn
+import sympy as sp
+import matplotlib.pyplot as plt
+
+from sklearn.linear_model import LinearRegression
+from psrqpy import QueryATNF
+
+logger = logging.getLogger(__name__)
+
+
 class PulsarPINN:
+    """
+    Physics-Informed Neural Network (PINN) for learning physical relationships from pulsar data.
+    
+    This class combines neural network predictions with physics-based constraints (differential
+    equations) to learn physical constants from the ATNF pulsar catalogue while respecting
+    known physical laws. The model automatically splits data into training, validation, and
+    test sets for robust evaluation.
+    
+    Parameters
+    ----------
+    x_param : str
+        Name of the x-axis parameter from ATNF catalogue (e.g., 'P0' for period).
+    y_param : str
+        Name of the y-axis parameter from ATNF catalogue (e.g., 'P1' for period derivative).
+    differential_eq : sympy.Eq
+        Symbolic differential equation representing the physics constraint.
+        Example: sp.Eq(logPdot, logC + (2 - n) * logP)
+    x_sym : sympy.Symbol
+        Symbolic variable corresponding to x_param in the differential equation.
+    y_sym : sympy.Symbol
+        Symbolic variable corresponding to y_param in the differential equation.
+    learn_constants : dict, optional
+        Dictionary mapping symbolic constants to their initial guesses.
+        Example: {logC: -14.75, n: 0.25}
+        Default: None (empty dictionary).
+    log_scale : bool, optional
+        Whether to apply log10 transformation to the data. Default: True.
+    psrqpy_filter_fn : callable, optional
+        Custom filter function: filter_fn(x_array, y_array) -> boolean_mask.
+        Applied after basic filtering for positive values. Default: None.
+    fixed_inputs : dict, optional
+        Dictionary mapping symbolic variables to fixed data arrays.
+        Used for multi-parameter equations where some variables are known.
+        Example: {logPDOT: logPDOT_data_array}
+        Arrays must match the length of the queried data. Default: None.
+    train_split : float, optional
+        Fraction of data used for training (0.0 to 1.0). Default: 0.70.
+    val_split : float, optional
+        Fraction of data used for validation (0.0 to 1.0). Default: 0.15.
+    test_split : float, optional
+        Fraction of data used for testing (0.0 to 1.0). Default: 0.15.
+        Note: train_split + val_split + test_split should equal 1.0.
+    random_seed : int, optional
+        Random seed for reproducible data splitting. Default: 42.
+    hidden_layers : list of int, optional
+        Neural network architecture specification as list of hidden layer sizes.
+        Example: [32, 16] creates a network with two hidden layers.
+        Default: [32, 16] (two hidden layers with 32 and 16 neurons).
+    
+    Attributes
+    ----------
+    model : torch.nn.Sequential
+        The neural network model with Tanh activations.
+    learnable_params : dict
+        Dictionary of learnable constant parameters as torch.nn.Parameter objects.
+    loss_log : dict
+        Training history containing:
+        - 'train_total', 'train_physics', 'train_data': Training losses per epoch
+        - 'val_total', 'val_physics', 'val_data': Validation losses at intervals
+        - 'total', 'physics', 'data': Backward compatibility aliases
+    test_metrics : dict
+        Final evaluation metrics including R² scores and losses for all data splits.
+    x_train, y_train : ndarray
+        Training data (transformed according to log_scale).
+    x_val, y_val : ndarray
+        Validation data (transformed according to log_scale).
+    x_test, y_test : ndarray
+        Test data (transformed according to log_scale).
+    x_all, y_all : ndarray
+        All data combined (for plotting purposes).
+    
+    Notes
+    -----
+    - The neural network uses double precision (float64) for numerical stability.
+    - Data is automatically queried from the ATNF pulsar catalogue via psrqpy.
+    - Invalid values (NaN, negative when log_scale=True) are automatically filtered.
+    - The loss function combines physics residuals and data fitting:
+      Loss = MSE(physics_residual) + MSE(prediction - actual)
+    - Early stopping can be enabled during training to prevent overfitting.
+    
+    See Also
+    --------
+    PulsarApproximation : Polynomial approximation without physics constraints
+    configure_logging : Configure logging verbosity for training output
+    """
     def __init__(self, x_param: str, y_param: str,
                  differential_eq: sp.Eq,
                  x_sym: sp.Symbol, y_sym: sp.Symbol,
@@ -11,7 +116,7 @@ class PulsarPINN:
                  val_split=0.15,
                  test_split=0.15,
                  random_seed=42,
-                 hidden_layers=None):  # NEW PARAMETER
+                 hidden_layers=None):
 
         self.x_param = x_param
         self.y_param = y_param
@@ -45,6 +150,18 @@ class PulsarPINN:
         self._convert_symbolic_to_residual()
 
     def _prepare_data(self):
+        """
+        Fetch pulsar data from ATNF catalogue and prepare train/validation/test splits.
+        
+        This internal method:
+        1. Queries the ATNF pulsar catalogue for the specified parameters
+        2. Filters out invalid values (NaN, non-positive if log_scale=True)
+        3. Applies optional custom filtering
+        4. Transforms data to log scale if requested
+        5. Randomly splits data into train/val/test sets
+        6. Converts data to PyTorch tensors with gradient tracking
+        7. Processes fixed inputs for each data split
+        """
         query = QueryATNF(params=[self.x_param, self.y_param])
         table = query.table
 
@@ -117,6 +234,17 @@ class PulsarPINN:
         self.fixed_torch_inputs = self.fixed_torch_inputs_train
 
     def _build_model(self):
+        """
+        Construct the neural network architecture dynamically.
+        
+        Builds a feedforward neural network with:
+        - Input layer: 1 neuron (x parameter)
+        - Hidden layers: Specified by hidden_layers parameter with Tanh activations
+        - Output layer: 1 neuron (y parameter prediction)
+        
+        All parameters use double precision (float64). Also initializes learnable
+        physical constants and the Adam optimizer.
+        """
         # Build network layers dynamically based on hidden_layers
         layers = []
         input_size = 1
@@ -144,6 +272,16 @@ class PulsarPINN:
         )
 
     def _convert_symbolic_to_residual(self):
+        """
+        Convert symbolic differential equation to a callable residual function.
+        
+        Transforms the SymPy equation into a PyTorch-compatible function that
+        can compute the physics residual during training. The residual is
+        (LHS - RHS) of the differential equation and should be minimized to zero.
+        
+        Uses sympy.lambdify to convert symbolic expressions to numerical functions,
+        preferring PyTorch operations for automatic differentiation.
+        """
         residual_expr = sp.simplify(self.differential_eq.lhs - self.differential_eq.rhs)
         symbols = [self.x_sym, self.y_sym] + list(self.learn_constants.keys()) + list(self.fixed_inputs.keys())
 
@@ -173,6 +311,38 @@ class PulsarPINN:
         self.physics_residual_fn = residual_fn
 
     def train(self, epochs=3000, val_interval=100, early_stopping_patience=None):
+        """
+        Train the Physics-Informed Neural Network.
+        
+        Optimizes both the neural network parameters and learnable physical constants
+        by minimizing a composite loss function that includes both data fitting and
+        physics constraint violations.
+        
+        Parameters
+        ----------
+        epochs : int, optional
+            Number of training iterations. Default: 3000.
+        val_interval : int, optional
+            Frequency (in epochs) for validation evaluation and logging.
+            Default: 100 (validate every 100 epochs).
+        early_stopping_patience : int, optional
+            Number of validation checks without improvement before stopping.
+            If None, training continues for all epochs. Default: None.
+        
+        Notes
+        -----
+        The loss function is: Loss = MSE(physics_residual) + MSE(data_error)
+        where:
+        - physics_residual = differential_eq.lhs - differential_eq.rhs
+        - data_error = neural_network_prediction - actual_data
+        
+        Training progress is logged at validation intervals showing:
+        - Training loss (on training set)
+        - Validation loss (on validation set)
+        - Current values of learnable constants
+        
+        After training completes, the learned constant values are printed.
+        """
         logger.info("Training PINN...")
         best_val_loss = float('inf')
         patience_counter = 0
@@ -239,7 +409,36 @@ class PulsarPINN:
         print(f"\nLearned constants: {msg}")
 
     def evaluate_test_set(self, verbose=True):
-        """Evaluate the trained model on the held-out test set."""
+        """
+        Evaluate the trained model on the held-out test set.
+        
+        Computes comprehensive evaluation metrics on all data splits (train, validation, test)
+        to assess model performance and detect potential overfitting.
+        
+        Parameters
+        ----------
+        verbose : bool, optional
+            If True, prints a detailed evaluation report. Default: True.
+        
+        Returns
+        -------
+        dict
+            Dictionary containing evaluation metrics:
+            - 'test_loss_total': Total loss on test set
+            - 'test_loss_physics': Physics residual loss on test set
+            - 'test_loss_data': Data fitting loss on test set
+            - 'test_r2': R² score on test set
+            - 'val_r2': R² score on validation set
+            - 'train_r2': R² score on training set
+        
+        Notes
+        -----
+        The R² score measures the proportion of variance explained by the model,
+        where 1.0 is perfect prediction and negative values indicate poor performance.
+        
+        A large difference between train_r2 and test_r2 (> 0.1) suggests overfitting,
+        indicating the model memorized training data rather than learning generalizable patterns.
+        """
         self.model.eval()
         with torch.no_grad():
             y_test_pred = self.model(self.x_test_torch)
@@ -303,6 +502,27 @@ class PulsarPINN:
         return self.test_metrics
 
     def predict_extended(self, extend=0.5, n_points=300):
+        """
+        Generate smooth predictions over an extended range.
+        
+        Creates predictions beyond the training data range for visualization
+        and extrapolation purposes.
+        
+        Parameters
+        ----------
+        extend : float, optional
+            How much to extend beyond the data range (in log units if log_scale=True).
+            Default: 0.5.
+        n_points : int, optional
+            Number of evenly-spaced prediction points. Default: 300.
+        
+        Returns
+        -------
+        x_values : ndarray
+            Shape (n_points,) array of x coordinates.
+        y_predictions : ndarray
+            Shape (n_points,) array of predicted y values.
+        """
         with torch.no_grad():
             x_min, x_max = self.x_torch.min().item(), self.x_torch.max().item()
             x_PINN = torch.linspace(x_min - extend, x_max + extend, n_points, dtype=torch.float64).view(-1, 1)
@@ -310,10 +530,30 @@ class PulsarPINN:
         return x_PINN.numpy(), y_PINN
 
     def store_learned_constants(self):
+        """
+        Retrieve the learned physical constant values.
+        
+        Returns
+        -------
+        dict
+            Dictionary mapping constant names (as strings) to their learned values (as floats).
+        """
         result = {k: v.item() for k, v in self.learnable_params.items()}
         return result
 
     def set_learn_constants(self, new_constants: dict):
+        """
+        Update or add learnable constants with new initial values.
+        
+        Useful for resuming training with different initial guesses or adding
+        new constants to learn. Reinitializes the optimizer to include new parameters.
+        
+        Parameters
+        ----------
+        new_constants : dict
+            Dictionary mapping constant names (str) to new values (float).
+            Can add new constants or update existing ones.
+        """
         for k, v in new_constants.items():
             if k not in self.learnable_params:
                 param = torch.nn.Parameter(torch.tensor([v], dtype=torch.float64))
@@ -329,6 +569,33 @@ class PulsarPINN:
         )
 
     def recommend_initial_guesses(self, method="mean"):
+        """
+        Recommend initial guesses for learnable constants based on training data.
+        
+        Analyzes the training data to suggest reasonable starting values for
+        physical constants, which can improve convergence.
+        
+        Parameters
+        ----------
+        method : str, optional
+            Method for generating recommendations:
+            - 'mean': Use mean(y) / mean(x) as scale factor
+            - 'regression': Linear regression to estimate slope/intercept
+            - 'ols_loglog': Ordinary least squares in log-log space
+            - 'zero': Initialize all constants to 0.0
+            Default: 'mean'.
+        
+        Returns
+        -------
+        dict
+            Dictionary mapping constant names to recommended initial values.
+        
+        Notes
+        -----
+        Recommendations are printed to stdout and returned as a dictionary.
+        These are suggestions only; the actual initial values are set during
+        instantiation via the learn_constants parameter.
+        """
         x = self.x_train
         y = self.y_train
         recommended = {}
@@ -367,7 +634,28 @@ class PulsarPINN:
         return recommended
 
     def plot_PINN_loss(self, log=True):
-        """Plot training and validation loss curves."""
+        """
+        Plot training and validation loss curves.
+        
+        Creates a two-panel figure showing:
+        - Left: Total loss (training and validation)
+        - Right: Loss components (physics and data losses)
+        
+        Parameters
+        ----------
+        log : bool, optional
+            If True, use logarithmic scale for y-axis. Default: True.
+            Recommended for visualizing loss over many orders of magnitude.
+        
+        Notes
+        -----
+        This plot helps diagnose training behavior:
+        - Decreasing losses indicate successful learning
+        - Diverging train/val losses suggest overfitting
+        - Oscillating losses may indicate learning rate is too high
+        - Dominant physics loss means the model struggles to satisfy the equation
+        - Dominant data loss means predictions don't match observations
+        """
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
         
         # Total Loss
@@ -411,7 +699,31 @@ class PulsarPINN:
         plt.show()
 
     def plot_PINN(self, show_splits=True):
-        """Plot PINN predictions with optional train/val/test split visualization."""
+        """
+        Plot PINN predictions against pulsar data.
+        
+        Visualizes the trained model's predictions overlaid on the actual pulsar
+        data from the ATNF catalogue.
+        
+        Parameters
+        ----------
+        show_splits : bool, optional
+            If True, color-code data points by split (train/val/test).
+            If False, show all data as a single series. Default: True.
+        
+        Notes
+        -----
+        The plot includes:
+        - Scatter points: Actual pulsar data
+        - Red line: PINN model predictions (extended beyond data range)
+        - Legend with sample sizes
+        - Test R² score in title (if evaluate_test_set() was called)
+        
+        When show_splits=True:
+        - Blue points: Training data (used for fitting)
+        - Orange points: Validation data (monitored during training)
+        - Green points: Test data (held out for final evaluation)
+        """
         x_PINN, y_PINN = self.predict_extended()
         
         plt.figure(figsize=(10, 6))
