@@ -1,229 +1,72 @@
+"""
+Physics-Informed Neural Networks (PINNs) for pulsar data.
+
+This module provides the PulsarPINN class for learning physical constants
+from pulsar data using physics-informed neural networks with PyTorch.
+"""
+
+import logging
 import numpy as np
 import torch
 import torch.nn as nn
 import sympy as sp
 import matplotlib.pyplot as plt
-import logging
 
 from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import PolynomialFeatures
-from sklearn.pipeline import Pipeline
-from sklearn.metrics import r2_score
 from psrqpy import QueryATNF
 
 logger = logging.getLogger(__name__)
 
-def configure_logging(level='INFO', format_string=None, log_file=None):
+
+class PulsarPINN:
     """
-    Configure logging for pulsarfitpy.
+    Physics-Informed Neural Network for pulsar parameter relationships.
+    
+    This class combines neural networks with physics constraints (differential
+    equations) to learn physical constants from pulsar data while respecting
+    known physics.
     
     Parameters
     ----------
-    level : str, optional
-        Logging level: 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'
-        Default is 'INFO'.
-
-    format_string : str, optional
-        Custom format string for log messages.
-        Default is '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-
-    log_file : str, optional
-        Path to log file. If None, logs to console only.
+    x_param : str
+        Name of the x-axis parameter from ATNF catalogue
+    y_param : str
+        Name of the y-axis parameter from ATNF catalogue
+    differential_eq : sympy.Eq
+        Differential equation as physics constraint
+    x_sym : sympy.Symbol
+        Symbolic variable for x parameter
+    y_sym : sympy.Symbol
+        Symbolic variable for y parameter
+    learn_constants : dict, optional
+        Dictionary of constants to learn {symbol_name: initial_value}
+    log_scale : bool, optional
+        Whether to use log10 scale for data (default: True)
+    psrqpy_filter_fn : callable, optional
+        Function to filter data: filter_fn(x, y) -> boolean mask
+    fixed_inputs : dict, optional
+        Dictionary of fixed symbolic inputs {symbol: array}
+    train_split : float, optional
+        Fraction of data for training (default: 0.70)
+    val_split : float, optional
+        Fraction of data for validation (default: 0.15)
+    test_split : float, optional
+        Fraction of data for test (default: 0.15)
+    random_seed : int, optional
+        Random seed for reproducibility (default: 42)
+        
+    Attributes
+    ----------
+    model : nn.Sequential
+        Neural network model
+    learnable_params : dict
+        Dictionary of learnable constant parameters
+    loss_log : dict
+        Training and validation loss history
+    test_metrics : dict
+        Final test set evaluation metrics
     """
-
-    level_map = {
-        'DEBUG': logging.DEBUG,
-        'INFO': logging.INFO,
-        'WARNING': logging.WARNING,
-        'ERROR': logging.ERROR,
-        'CRITICAL': logging.CRITICAL
-    }
     
-    log_level = level_map.get(level.upper(), logging.INFO)
-    
-    if format_string is None:
-        format_string = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    
-    pulsarfitpy_logger = logging.getLogger('pulsarfitpy')
-    pulsarfitpy_logger.setLevel(log_level)
-    
-    pulsarfitpy_logger.handlers.clear()
-    
-    formatter = logging.Formatter(format_string)
-    
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(log_level)
-    console_handler.setFormatter(formatter)
-    pulsarfitpy_logger.addHandler(console_handler)
-    
-    if log_file:
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(log_level)
-        file_handler.setFormatter(formatter)
-
-        pulsarfitpy_logger.addHandler(file_handler)
-        pulsarfitpy_logger.info(f"Logging to file: {log_file}")
-    
-    pulsarfitpy_logger.info(f"Logging configured at level: {level.upper()}")
-
-# Pulsar Polynomial Approximation class
-class PulsarApproximation:
-    def __init__(self, query: QueryATNF, x_param: str, y_param: str, test_degree: int, log_x=True, log_y=True):
-        self.query = query
-        self.x_param = x_param
-        self.y_param = y_param
-        self.test_degree = test_degree
-        self.log_x = log_x
-        self.log_y = log_y
-
-        self.query_table = None
-        self.x_data = None
-        self.y_data = None
-        self.model = None
-        self.best_degree = None
-        self.coefficients = None
-        self.intercept = None
-        self.predicted_x = None
-        self.predicted_y = None
-        self.r2_scores = {}
-
-        self._process_query_data()
-
-    def _process_query_data(self):
-        table = self.query.table
-        x_vals = np.array(table[self.x_param], dtype=float)
-        y_vals = np.array(table[self.y_param], dtype=float)
-
-        # Filter out invalid values
-        mask = np.isfinite(x_vals) & np.isfinite(y_vals)
-        if self.log_x:
-            mask &= x_vals > 0
-
-        if self.log_y:
-            mask &= y_vals > 0
-
-        x_vals = x_vals[mask]
-        y_vals = y_vals[mask]
-
-        if len(x_vals) == 0:
-            raise ValueError("No valid data points found.")
-
-        if self.log_x:
-            x_vals = np.log10(x_vals)
-
-        if self.log_y:
-            y_vals = np.log10(y_vals)
-
-        self.x_data = x_vals.reshape(-1, 1)
-        self.y_data = y_vals
-        self.query_table = table[mask]
-
-    def fit_polynomial(self, verbose=True):
-        if verbose:
-            logger.info("Fitting Polynomial Approximation...")
-        best_score = float('-inf')
-
-        for degree in range(1, self.test_degree + 1):
-            pipeline = Pipeline([
-                ('poly', PolynomialFeatures(degree=degree)),
-                ('reg', LinearRegression())
-            ])
-            pipeline.fit(self.x_data, self.y_data)
-            y_PINN = pipeline.predict(self.x_data)
-            
-            score = r2_score(self.y_data, y_PINN)
-            self.r2_scores[degree] = score
-
-            if verbose:
-                logger.info(f"Degree {degree} → R² Score: {score:.6f}")
-
-            if score > best_score:
-                best_score = score
-                self.model = pipeline
-                self.best_degree = degree
-
-        self.coefficients = self.model.named_steps['reg'].coef_
-        self.intercept = self.model.named_steps['reg'].intercept_
-
-        self.predicted_x = np.linspace(self.x_data.min(), self.x_data.max(), 100).reshape(-1, 1)
-        self.predicted_y = self.model.predict(self.predicted_x)
-
-    def get_polynomial_expression(self):
-        terms = [f"{self.intercept:.10f}"]
-        for i, coef in enumerate(self.coefficients[1:], start=1):
-            terms.append(f"{coef:.10f} * x**{i}")
-        
-        return " + ".join(terms)
-
-    def print_polynomial(self):
-        poly_expr = self.get_polynomial_expression()
-
-        print(f"\nBest Polynomial Degree: {self.best_degree}")
-        print(f"Approximated Polynomial Function:\nf(x) = {poly_expr}")
-
-    def plot_r2_scores(self):
-        if not self.r2_scores:
-            raise RuntimeError("Run `fit_polynomial()` first.")
-        
-        degrees = list(self.r2_scores.keys())
-        scores = list(self.r2_scores.values())
-
-        plt.figure(figsize=(8, 5))
-        plt.plot(degrees, scores, marker='o', linestyle='-', color='turquoise')
-        plt.title("R² Score vs Polynomial Degree")
-        plt.xlabel("Polynomial Degree")
-        plt.ylabel("R² Score")
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
-
-    def plot_approximation_curve(self):
-        if self.predicted_x is None or self.predicted_y is None:
-            raise RuntimeError("Run `fit_polynomial()` first.")
-
-        plt.figure(figsize=(8, 5))
-        plt.scatter(self.x_data, self.y_data, s=10, alpha=0.4, label='Pulsars')
-        plt.plot(self.predicted_x, self.predicted_y, color='navy', label=f'Degree {self.best_degree} Fit')
-        plt.xlabel(f"log({self.x_param})" if self.log_x else self.x_param)
-        plt.ylabel(f"log({self.y_param})" if self.log_y else self.y_param)
-        plt.title("Polynomial Fit of Pulsar Data")
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
-        
-    def plot_combined_analysis(self):
-        if self.predicted_x is None or self.predicted_y is None:
-            raise RuntimeError("Run `fit_polynomial()` first.")
-        if not self.r2_scores:
-            raise RuntimeError("R² scores are empty. Run `fit_polynomial()` first.")
-
-        degrees = list(self.r2_scores.keys())
-        scores = list(self.r2_scores.values())
-
-        fig, axs = plt.subplots(1, 2, figsize=(14, 5))
-
-        # Plot 1: Polynomial Fit
-        axs[0].scatter(self.x_data, self.y_data, s=10, alpha=0.5, label='Pulsars')
-        axs[0].plot(self.predicted_x, self.predicted_y, color='navy', label=f'Degree {self.best_degree} Fit')
-        axs[0].set_xlabel(f"log({self.x_param})" if self.log_x else self.x_param)
-        axs[0].set_ylabel(f"log({self.y_param})" if self.log_y else self.y_param)
-        axs[0].set_title("Polynomial Fit of Pulsar Data")
-        axs[0].legend()
-        axs[0].grid(True)
-
-        # Plot 2: R² vs Degree
-        axs[1].plot(degrees, scores, marker='o', linestyle='-', color='turquoise')
-        axs[1].set_xlabel("Polynomial Degree")
-        axs[1].set_ylabel("R² Score")
-        axs[1].set_title("R² Score vs Polynomial Degree")
-        axs[1].grid(True)
-
-        plt.tight_layout()
-        plt.show()
-
-# Pulsar PINN Prediction Class + Framework
-class PulsarPINN:
     def __init__(self, x_param: str, y_param: str,
                  differential_eq: sp.Eq,
                  x_sym: sp.Symbol, y_sym: sp.Symbol,
@@ -234,8 +77,7 @@ class PulsarPINN:
                  train_split=0.70,
                  val_split=0.15,
                  test_split=0.15,
-                 random_seed=42,
-                 hidden_layers=None):  # NEW PARAMETER
+                 random_seed=42):
 
         self.x_param = x_param
         self.y_param = y_param
@@ -249,7 +91,6 @@ class PulsarPINN:
         self.val_split = val_split
         self.test_split = test_split
         self.random_seed = random_seed
-        self.hidden_layers = hidden_layers or [32, 16]  # Default architecture
 
         self.fixed_inputs = fixed_inputs or {}
         self.fixed_torch_inputs = {}
@@ -259,8 +100,7 @@ class PulsarPINN:
         self.learnable_params = {}
         self.loss_log = {
             "train_total": [], "train_physics": [], "train_data": [],
-            "val_total": [], "val_physics": [], "val_data": [],
-            "total": [], "physics": [], "data": []  # For backward compatibility
+            "val_total": [], "val_physics": [], "val_data": []
         }
         self.test_metrics = {}
 
@@ -269,6 +109,7 @@ class PulsarPINN:
         self._convert_symbolic_to_residual()
 
     def _prepare_data(self):
+        """Fetch and prepare pulsar data with train/val/test split."""
         query = QueryATNF(params=[self.x_param, self.y_param])
         table = query.table
 
@@ -341,21 +182,14 @@ class PulsarPINN:
         self.fixed_torch_inputs = self.fixed_torch_inputs_train
 
     def _build_model(self):
-        # Build network layers dynamically based on hidden_layers
-        layers = []
-        input_size = 1
-        
-        for hidden_size in self.hidden_layers:
-            layers.append(nn.Linear(input_size, hidden_size))
-            layers.append(nn.Tanh())
-            input_size = hidden_size
-        
-        # Output layer
-        layers.append(nn.Linear(input_size, 1))
-        
-        self.model = nn.Sequential(*layers).double()
-        
-        logger.info(f"Built neural network with architecture: [1] -> {self.hidden_layers} -> [1]")
+        """Build the neural network architecture."""
+        self.model = nn.Sequential(
+            nn.Linear(1, 32),
+            nn.Tanh(),
+            nn.Linear(32, 16),
+            nn.Tanh(),
+            nn.Linear(16, 1)
+        ).double()
 
         self.learnable_params = {
             str(k): torch.nn.Parameter(torch.tensor([v], dtype=torch.float64))
@@ -368,6 +202,7 @@ class PulsarPINN:
         )
 
     def _convert_symbolic_to_residual(self):
+        """Convert symbolic differential equation to a callable residual function."""
         residual_expr = sp.simplify(self.differential_eq.lhs - self.differential_eq.rhs)
         symbols = [self.x_sym, self.y_sym] + list(self.learn_constants.keys()) + list(self.fixed_inputs.keys())
 
@@ -397,13 +232,25 @@ class PulsarPINN:
         self.physics_residual_fn = residual_fn
 
     def train(self, epochs=3000, val_interval=100, early_stopping_patience=None):
+        """
+        Train the PINN model.
+        
+        Parameters
+        ----------
+        epochs : int, optional
+            Number of training epochs (default: 3000)
+        val_interval : int, optional
+            Validation check interval in epochs (default: 100)
+        early_stopping_patience : int, optional
+            Stop if validation loss doesn't improve for N checks (default: None)
+        """
         logger.info("Training PINN...")
         best_val_loss = float('inf')
         patience_counter = 0
         
         for epoch in range(epochs):
+            # Training step
             self.model.train()
-
             y_PINN = self.model(self.x_torch)
             residual = self.physics_residual_fn(self.x_torch, y_PINN, self.fixed_torch_inputs_train)
             loss_phys = torch.mean(residual ** 2)
@@ -417,12 +264,8 @@ class PulsarPINN:
             self.loss_log["train_total"].append(loss.item())
             self.loss_log["train_physics"].append(loss_phys.item())
             self.loss_log["train_data"].append(loss_data.item())
-            # Backward compatibility
-            self.loss_log["total"].append(loss.item())
-            self.loss_log["physics"].append(loss_phys.item())
-            self.loss_log["data"].append(loss_data.item())
 
-            # Validation
+            # Validation step
             if epoch % val_interval == 0:
                 self.model.eval()
                 with torch.no_grad():
@@ -441,7 +284,7 @@ class PulsarPINN:
                 )
                 logger.info(f"Epoch {epoch}: Train Loss = {loss.item():.6e}, Val Loss = {val_loss.item():.6e} | {const_str}")
                 
-                # Check for early stops
+                # Early stopping check
                 if early_stopping_patience is not None:
                     if val_loss.item() < best_val_loss:
                         best_val_loss = val_loss.item()
@@ -457,13 +300,25 @@ class PulsarPINN:
                 )
                 logger.debug(f"Epoch {epoch}: Train Loss = {loss.item():.6e} | {const_str}")
 
-        # Display results..
+        # Print Result (keep as print - important final output)
         result = {k: v.item() for k, v in self.learnable_params.items()}
         msg = ", ".join(f"{k} = {v:.25f}" for k, v in result.items())
         print(f"\nLearned constants: {msg}")
 
     def evaluate_test_set(self, verbose=True):
-        """Evaluate the trained model on the held-out test set."""
+        """
+        Evaluate the trained model on the held-out test set.
+        
+        Parameters
+        ----------
+        verbose : bool, optional
+            Whether to print detailed evaluation (default: True)
+            
+        Returns
+        -------
+        dict
+            Dictionary containing test metrics
+        """
         self.model.eval()
         with torch.no_grad():
             y_test_pred = self.model(self.x_test_torch)
@@ -472,20 +327,20 @@ class PulsarPINN:
             test_loss_data = torch.mean((y_test_pred - self.y_test_torch) ** 2)
             test_loss_total = test_loss_phys + test_loss_data
             
-            # R^2
+            # Calculate R² score
             y_test_mean = torch.mean(self.y_test_torch)
             ss_tot = torch.sum((self.y_test_torch - y_test_mean) ** 2)
             ss_res = torch.sum((self.y_test_torch - y_test_pred) ** 2)
             r2_score = 1 - (ss_res / ss_tot)
             
-            # Validation Metrics
+            # Calculate metrics for validation set
             y_val_pred = self.model(self.x_val_torch)
             y_val_mean = torch.mean(self.y_val_torch)
             ss_tot_val = torch.sum((self.y_val_torch - y_val_mean) ** 2)
             ss_res_val = torch.sum((self.y_val_torch - y_val_pred) ** 2)
             r2_val = 1 - (ss_res_val / ss_tot_val)
             
-            # Training Metrics
+            # Calculate metrics for training set
             y_train_pred = self.model(self.x_torch)
             y_train_mean = torch.mean(self.y_torch)
             ss_tot_train = torch.sum((self.y_torch - y_train_mean) ** 2)
@@ -521,12 +376,26 @@ class PulsarPINN:
                 print(f"  Training R² - Test R² = {self.test_metrics['train_r2'] - self.test_metrics['test_r2']:.4f}")
             else:
                 print(f"\n✓ Good generalization: Train/Test R² difference = {self.test_metrics['train_r2'] - self.test_metrics['test_r2']:.4f}")
-                
             print("="*60)
         
         return self.test_metrics
 
     def predict_extended(self, extend=0.5, n_points=300):
+        """
+        Generate predictions over an extended range.
+        
+        Parameters
+        ----------
+        extend : float, optional
+            How much to extend beyond data range (default: 0.5)
+        n_points : int, optional
+            Number of prediction points (default: 300)
+            
+        Returns
+        -------
+        tuple
+            (x_values, y_predictions) as numpy arrays
+        """
         with torch.no_grad():
             x_min, x_max = self.x_torch.min().item(), self.x_torch.max().item()
             x_PINN = torch.linspace(x_min - extend, x_max + extend, n_points, dtype=torch.float64).view(-1, 1)
@@ -534,10 +403,26 @@ class PulsarPINN:
         return x_PINN.numpy(), y_PINN
 
     def store_learned_constants(self):
+        """
+        Store the learned constants.
+        
+        Returns
+        -------
+        dict
+            Dictionary of learned constant values
+        """
         result = {k: v.item() for k, v in self.learnable_params.items()}
         return result
 
     def set_learn_constants(self, new_constants: dict):
+        """
+        Update learnable constants.
+        
+        Parameters
+        ----------
+        new_constants : dict
+            Dictionary of constants to add or update {name: value}
+        """
         for k, v in new_constants.items():
             if k not in self.learnable_params:
                 param = torch.nn.Parameter(torch.tensor([v], dtype=torch.float64))
@@ -553,6 +438,19 @@ class PulsarPINN:
         )
 
     def recommend_initial_guesses(self, method="mean"):
+        """
+        Recommend initial guesses for learnable constants based on training data.
+        
+        Parameters
+        ----------
+        method : str, optional
+            Method to use: 'mean', 'regression', 'ols_loglog', 'zero' (default: 'mean')
+            
+        Returns
+        -------
+        dict
+            Dictionary of recommended initial values
+        """
         x = self.x_train
         y = self.y_train
         recommended = {}
@@ -591,40 +489,50 @@ class PulsarPINN:
         return recommended
 
     def plot_PINN_loss(self, log=True):
-        """Plot training and validation loss curves."""
+        """
+        Plot training and validation loss curves.
+        
+        Parameters
+        ----------
+        log : bool, optional
+            Whether to use log scale for y-axis (default: True)
+        """
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
         
-        # Total Loss
+        # Plot 1: Total loss
         epochs_train = range(len(self.loss_log["train_total"]))
         ax1.plot(epochs_train, self.loss_log["train_total"], label='Train Total', linewidth=2, alpha=0.8)
         
         if self.loss_log["val_total"]:
+            # Val loss is recorded at intervals
             val_interval = len(self.loss_log["train_total"]) // len(self.loss_log["val_total"])
             epochs_val = range(0, len(self.loss_log["train_total"]), val_interval)
             epochs_val = list(epochs_val)[:len(self.loss_log["val_total"])]
-
-            ax1.plot(epochs_val, self.loss_log["val_total"], label='Val Total', linewidth=2, marker='o', markersize=4, alpha=0.8)
+            ax1.plot(epochs_val, self.loss_log["val_total"], label='Val Total', 
+                    linewidth=2, marker='o', markersize=4, alpha=0.8)
         
         if log:
             ax1.set_yscale('log')
-
         ax1.set_xlabel('Epoch')
         ax1.set_ylabel('Total Loss')
         ax1.set_title('Total Loss: Train vs Validation')
         ax1.legend()
         ax1.grid(True, alpha=0.3)
         
-        # Physics & Data Loss
-        ax2.plot(epochs_train, self.loss_log["train_physics"], label='Train Physics', linestyle='--', alpha=0.7)
-        ax2.plot(epochs_train, self.loss_log["train_data"], label='Train Data', linestyle='--', alpha=0.7)
+        # Plot 2: Physics and Data loss components
+        ax2.plot(epochs_train, self.loss_log["train_physics"], 
+                label='Train Physics', linestyle='--', alpha=0.7)
+        ax2.plot(epochs_train, self.loss_log["train_data"], 
+                label='Train Data', linestyle='--', alpha=0.7)
         
         if self.loss_log["val_physics"]:
-            ax2.plot(epochs_val, self.loss_log["val_physics"], label='Val Physics', linestyle=':', marker='s', markersize=3, alpha=0.7)
-            ax2.plot(epochs_val, self.loss_log["val_data"], label='Val Data', linestyle=':', marker='s', markersize=3, alpha=0.7)
+            ax2.plot(epochs_val, self.loss_log["val_physics"], 
+                    label='Val Physics', linestyle=':', marker='s', markersize=3, alpha=0.7)
+            ax2.plot(epochs_val, self.loss_log["val_data"], 
+                    label='Val Data', linestyle=':', marker='s', markersize=3, alpha=0.7)
         
         if log:
             ax2.set_yscale('log')
-
         ax2.set_xlabel('Epoch')
         ax2.set_ylabel('Loss')
         ax2.set_title('Loss Components')
@@ -635,15 +543,25 @@ class PulsarPINN:
         plt.show()
 
     def plot_PINN(self, show_splits=True):
-        """Plot PINN predictions with optional train/val/test split visualization."""
+        """
+        Plot PINN predictions with optional train/val/test split visualization.
+        
+        Parameters
+        ----------
+        show_splits : bool, optional
+            Whether to color-code the data splits (default: True)
+        """
         x_PINN, y_PINN = self.predict_extended()
         
         plt.figure(figsize=(10, 6))
         
         if show_splits:
-            plt.scatter(self.x_train, self.y_train, label=f'Train (n={len(self.x_train)})', s=10, alpha=0.5, c='blue')
-            plt.scatter(self.x_val, self.y_val, label=f'Val (n={len(self.x_val)})', s=10, alpha=0.5, c='orange')
-            plt.scatter(self.x_test, self.y_test, label=f'Test (n={len(self.x_test)})', s=10, alpha=0.5, c='green')
+            plt.scatter(self.x_train, self.y_train, label=f'Train (n={len(self.x_train)})', 
+                       s=10, alpha=0.5, c='blue')
+            plt.scatter(self.x_val, self.y_val, label=f'Val (n={len(self.x_val)})', 
+                       s=10, alpha=0.5, c='orange')
+            plt.scatter(self.x_test, self.y_test, label=f'Test (n={len(self.x_test)})', 
+                       s=10, alpha=0.5, c='green')
         else:
             plt.scatter(self.x_all, self.y_all, label='ATNF Data', s=10, alpha=0.5)
             
@@ -654,7 +572,6 @@ class PulsarPINN:
         title = 'PINN Prediction vs Pulsar Data'
         if hasattr(self, 'test_metrics') and self.test_metrics:
             title += f"\nTest R² = {self.test_metrics['test_r2']:.4f}"
-
         plt.title(title)
         plt.legend()
         plt.grid(True, alpha=0.3)
