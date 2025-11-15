@@ -1,7 +1,7 @@
 import sympy as sp
 import numpy as np
 from psrqpy import QueryATNF
-from src.pulsarfitpy.core import PulsarPINN
+from src.pulsarfitpy import PulsarPINN
 import matplotlib.pyplot as plt
 
 logP, logPDOT, logB = sp.symbols('logP logPDOT logB')

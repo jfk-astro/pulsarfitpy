@@ -1,3 +1,14 @@
-from .core import (PulsarApproximation, PulsarPINN, configure_logging)
+"""
+pulsarfitpy - Polynomial approximation and Physics-Informed Neural Networks for pulsar data.
 
-__all__ = ['PulsarApproximation', 'PulsarPINN', 'configure_logging']
+This package provides tools for analyzing pulsar data from the ATNF catalogue using:
+- Polynomial approximation (PulsarApproximation)
+- Physics-Informed Neural Networks (PulsarPINN)
+- Logging utilities (configure_logging)
+"""
+
+from .utils import configure_logging
+from .approximation import PulsarApproximation
+from .pinn import PulsarPINN
+
+__all__ = ['configure_logging', 'PulsarApproximation', 'PulsarPINN']
