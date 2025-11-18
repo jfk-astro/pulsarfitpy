@@ -5,10 +5,12 @@ This package provides tools for analyzing pulsar data from the ATNF catalogue us
 - Polynomial approximation (PulsarApproximation)
 - Physics-Informed Neural Networks (PulsarPINN)
 - Logging utilities (configure_logging)
+- Quantitative metrics for objective model assessment (RMSE, MAE, reduced χ²)
 """
 
 from .utils import configure_logging
 from .approximation import PulsarApproximation
 from .pinn import PulsarPINN
+from .metrics_reference import print_reference as print_metrics_guide
 
-__all__ = ['configure_logging', 'PulsarApproximation', 'PulsarPINN']
+__all__ = ['configure_logging', 'PulsarApproximation', 'PulsarPINN', 'print_metrics_guide']

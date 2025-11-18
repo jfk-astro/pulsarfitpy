@@ -141,6 +141,100 @@ class PulsarApproximation:
         self.predicted_x = np.linspace(self.x_data.min(), self.x_data.max(), 100).reshape(-1, 1)
         self.predicted_y = self.model.predict(self.predicted_x)
 
+    def compute_metrics(self, verbose=True):
+        """
+        Compute quantitative metrics for the fitted polynomial model.
+        
+        Calculates RMSE, MAE, and reduced χ² to objectively assess model fit.
+        These metrics provide quantitative measures beyond visual comparison.
+        
+        Parameters
+        ----------
+        verbose : bool, optional
+            If True, prints detailed metrics report. Default: True.
+        
+        Returns
+        -------
+        dict
+            Dictionary containing:
+            - 'r2': R² score (coefficient of determination)
+            - 'rmse': Root Mean Squared Error
+            - 'mae': Mean Absolute Error
+            - 'chi2_reduced': Reduced χ²
+            - 'n_samples': Number of data points
+            - 'n_params': Number of model parameters
+        
+        Notes
+        -----
+        - RMSE penalizes larger errors more heavily than MAE
+        - MAE gives equal weight to all errors
+        - Reduced χ² close to 1.0 indicates good fit
+        - R² close to 1.0 indicates the model explains most variance
+        """
+        if self.model is None or self.predicted_y is None:
+            raise RuntimeError("Run `fit_polynomial()` first.")
+        
+        # Get predictions for all data points
+        y_pred = self.model.predict(self.x_data)
+        
+        # R² Score
+        r2 = r2_score(self.y_data, y_pred)
+        
+        # RMSE (Root Mean Squared Error)
+        rmse = np.sqrt(np.mean((y_pred - self.y_data) ** 2))
+        
+        # MAE (Mean Absolute Error)
+        mae = np.mean(np.abs(y_pred - self.y_data))
+        
+        # Reduced Chi-Squared
+        n_samples = len(self.y_data)
+        n_params = len(self.coefficients) + 1  # coefficients + intercept
+        dof = max(n_samples - n_params, 1)  # degrees of freedom
+        chi2 = np.sum((y_pred - self.y_data) ** 2)
+        chi2_reduced = chi2 / dof
+        
+        metrics = {
+            'r2': r2,
+            'rmse': rmse,
+            'mae': mae,
+            'chi2_reduced': chi2_reduced,
+            'n_samples': n_samples,
+            'n_params': n_params
+        }
+        
+        if verbose:
+            print("\n" + "="*70)
+            print("POLYNOMIAL FIT - QUANTITATIVE METRICS")
+            print("="*70)
+            print(f"\nModel: Polynomial Degree {self.best_degree}")
+            print(f"Data Points: {n_samples}")
+            print(f"Parameters: {n_params}")
+            print(f"\nGoodness of Fit Metrics:")
+            print(f"  R² Score:          {r2:.6f}")
+            print(f"  RMSE:              {rmse:.6e}")
+            print(f"  MAE:               {mae:.6e}")
+            print(f"  Reduced χ²:        {chi2_reduced:.6f}")
+            
+            print(f"\n" + "-"*70)
+            print("METRIC INTERPRETATION:")
+            print(f"  • R² (Coefficient of Determination): {r2:.4f}")
+            print(f"    → Model explains {100*r2:.2f}% of the variance in the data")
+            print(f"  • RMSE (Root Mean Squared Error): {rmse:.6e}")
+            print(f"    → Average prediction error (penalizes large deviations)")
+            print(f"  • MAE (Mean Absolute Error): {mae:.6e}")
+            print(f"    → Average absolute prediction error")
+            print(f"  • Reduced χ²: {chi2_reduced:.4f}")
+            if chi2_reduced < 0.5:
+                print(f"    → Model may be overfitting (χ² too low)")
+            elif chi2_reduced > 2.0:
+                print(f"    → Model may be underfitting or systematic errors present")
+            else:
+                print(f"    → Good model fit achieved")
+            print("-"*70)
+            print("="*70)
+        
+        return metrics
+    
     def get_polynomial_expression(self):
         """
         Get the polynomial expression as a string.

@@ -39,6 +39,12 @@ pinn = PulsarPINN(
 pinn.train(epochs=10000)
 learned_values = pinn.store_learned_constants()
 
+# Evaluate the model with quantitative metrics
+print("\n" + "="*70)
+print("EVALUATING MODEL WITH QUANTITATIVE METRICS")
+print("="*70)
+pinn.evaluate_test_set(verbose=True)
+
 plt.figure(figsize=(5, 6))
 plt.title("Surface Magnetic Field vs. Period - PINN Model #1")
 plt.xlabel('Period [log(s)]')

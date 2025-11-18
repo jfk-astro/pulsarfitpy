@@ -413,7 +413,8 @@ class PulsarPINN:
         Evaluate the trained model on the held-out test set.
         
         Computes comprehensive evaluation metrics on all data splits (train, validation, test)
-        to assess model performance and detect potential overfitting.
+        to assess model performance and detect potential overfitting. Includes quantitative
+        metrics such as RMSE, MAE, and reduced χ² for objective model assessment.
         
         Parameters
         ----------
@@ -428,13 +429,20 @@ class PulsarPINN:
             - 'test_loss_physics': Physics residual loss on test set
             - 'test_loss_data': Data fitting loss on test set
             - 'test_r2': R² score on test set
-            - 'val_r2': R² score on validation set
-            - 'train_r2': R² score on training set
+            - 'test_rmse': Root Mean Squared Error on test set
+            - 'test_mae': Mean Absolute Error on test set
+            - 'test_chi2_reduced': Reduced χ² on test set
+            - 'val_r2', 'val_rmse', 'val_mae': Validation set metrics
+            - 'train_r2', 'train_rmse', 'train_mae': Training set metrics
         
         Notes
         -----
         The R² score measures the proportion of variance explained by the model,
         where 1.0 is perfect prediction and negative values indicate poor performance.
+        
+        RMSE (Root Mean Squared Error) penalizes larger errors more heavily than MAE.
+        MAE (Mean Absolute Error) gives equal weight to all errors.
+        Reduced χ² measures goodness of fit (values close to 1.0 indicate good fit).
         
         A large difference between train_r2 and test_r2 (> 0.1) suggests overfitting,
         indicating the model memorized training data rather than learning generalizable patterns.
@@ -453,12 +461,27 @@ class PulsarPINN:
             ss_res = torch.sum((self.y_test_torch - y_test_pred) ** 2)
             r2_score = 1 - (ss_res / ss_tot)
             
+            # RMSE (Root Mean Squared Error)
+            test_rmse = torch.sqrt(torch.mean((y_test_pred - self.y_test_torch) ** 2))
+            
+            # MAE (Mean Absolute Error)
+            test_mae = torch.mean(torch.abs(y_test_pred - self.y_test_torch))
+            
+            # Reduced Chi-Squared (χ²)
+            n_test = len(self.y_test_torch)
+            n_params = sum(p.numel() for p in self.model.parameters()) + len(self.learnable_params)
+            dof = max(n_test - n_params, 1)  # degrees of freedom
+            chi2 = torch.sum((y_test_pred - self.y_test_torch) ** 2)
+            test_chi2_reduced = chi2 / dof
+            
             # Validation Metrics
             y_val_pred = self.model(self.x_val_torch)
             y_val_mean = torch.mean(self.y_val_torch)
             ss_tot_val = torch.sum((self.y_val_torch - y_val_mean) ** 2)
             ss_res_val = torch.sum((self.y_val_torch - y_val_pred) ** 2)
             r2_val = 1 - (ss_res_val / ss_tot_val)
+            val_rmse = torch.sqrt(torch.mean((y_val_pred - self.y_val_torch) ** 2))
+            val_mae = torch.mean(torch.abs(y_val_pred - self.y_val_torch))
             
             # Training Metrics
             y_train_pred = self.model(self.x_torch)
@@ -466,38 +489,78 @@ class PulsarPINN:
             ss_tot_train = torch.sum((self.y_torch - y_train_mean) ** 2)
             ss_res_train = torch.sum((self.y_torch - y_train_pred) ** 2)
             r2_train = 1 - (ss_res_train / ss_tot_train)
+            train_rmse = torch.sqrt(torch.mean((y_train_pred - self.y_torch) ** 2))
+            train_mae = torch.mean(torch.abs(y_train_pred - self.y_torch))
         
         self.test_metrics = {
             'test_loss_total': test_loss_total.item(),
             'test_loss_physics': test_loss_phys.item(),
             'test_loss_data': test_loss_data.item(),
             'test_r2': r2_score.item(),
+            'test_rmse': test_rmse.item(),
+            'test_mae': test_mae.item(),
+            'test_chi2_reduced': test_chi2_reduced.item(),
             'val_r2': r2_val.item(),
-            'train_r2': r2_train.item()
+            'val_rmse': val_rmse.item(),
+            'val_mae': val_mae.item(),
+            'train_r2': r2_train.item(),
+            'train_rmse': train_rmse.item(),
+            'train_mae': train_mae.item()
         }
         
         if verbose:
-            print("\n" + "="*60)
-            print("FINAL MODEL EVALUATION")
-            print("="*60)
+            print("\n" + "="*70)
+            print("FINAL MODEL EVALUATION - QUANTITATIVE METRICS")
+            print("="*70)
             print(f"\nTest Set Performance (unseen data, n={len(self.x_test)}):")
-            print(f"  Total Loss:     {self.test_metrics['test_loss_total']:.6e}")
-            print(f"  Physics Loss:   {self.test_metrics['test_loss_physics']:.6e}")
-            print(f"  Data Loss:      {self.test_metrics['test_loss_data']:.6e}")
-            print(f"  R² Score:       {self.test_metrics['test_r2']:.6f}")
+            print(f"  Total Loss:        {self.test_metrics['test_loss_total']:.6e}")
+            print(f"  Physics Loss:      {self.test_metrics['test_loss_physics']:.6e}")
+            print(f"  Data Loss:         {self.test_metrics['test_loss_data']:.6e}")
+            print(f"\n  Goodness of Fit Metrics:")
+            print(f"  R² Score:          {self.test_metrics['test_r2']:.6f}")
+            print(f"  RMSE:              {self.test_metrics['test_rmse']:.6e}")
+            print(f"  MAE:               {self.test_metrics['test_mae']:.6e}")
+            print(f"  Reduced χ²:        {self.test_metrics['test_chi2_reduced']:.6f}")
+            
             print(f"\nValidation Set Performance (n={len(self.x_val)}):")
-            print(f"  R² Score:       {self.test_metrics['val_r2']:.6f}")
+            print(f"  R² Score:          {self.test_metrics['val_r2']:.6f}")
+            print(f"  RMSE:              {self.test_metrics['val_rmse']:.6e}")
+            print(f"  MAE:               {self.test_metrics['val_mae']:.6e}")
+            
             print(f"\nTraining Set Performance (n={len(self.x_train)}):")
-            print(f"  R² Score:       {self.test_metrics['train_r2']:.6f}")
+            print(f"  R² Score:          {self.test_metrics['train_r2']:.6f}")
+            print(f"  RMSE:              {self.test_metrics['train_rmse']:.6e}")
+            print(f"  MAE:               {self.test_metrics['train_mae']:.6e}")
+            
+            # Interpretation Guide
+            print(f"\n" + "-"*70)
+            print("METRIC INTERPRETATION:")
+            print(f"  • R² (Coefficient of Determination): {self.test_metrics['test_r2']:.4f}")
+            print(f"    → Closer to 1.0 is better (explains {100*self.test_metrics['test_r2']:.2f}% of variance)")
+            print(f"  • RMSE (Root Mean Squared Error): {self.test_metrics['test_rmse']:.6e}")
+            print(f"    → Lower is better, penalizes large errors")
+            print(f"  • MAE (Mean Absolute Error): {self.test_metrics['test_mae']:.6e}")
+            print(f"    → Lower is better, average prediction error")
+            print(f"  • Reduced χ²: {self.test_metrics['test_chi2_reduced']:.4f}")
+            print(f"    → Values close to 1.0 indicate good fit")
+            if self.test_metrics['test_chi2_reduced'] < 1.0:
+                print(f"    → Model may be overfitting the data")
+            elif self.test_metrics['test_chi2_reduced'] > 2.0:
+                print(f"    → Model may be underfitting or systematic errors present")
+            else:
+                print(f"    → Good model fit achieved")
+            print("-"*70)
             
             # Check for overfitting
             if self.test_metrics['train_r2'] - self.test_metrics['test_r2'] > 0.1:
                 print(f"\n⚠ WARNING: Possible overfitting detected!")
                 print(f"  Training R² - Test R² = {self.test_metrics['train_r2'] - self.test_metrics['test_r2']:.4f}")
+                print(f"  Consider: reducing model complexity, adding regularization, or")
+                print(f"           collecting more training data")
             else:
                 print(f"\n✓ Good generalization: Train/Test R² difference = {self.test_metrics['train_r2'] - self.test_metrics['test_r2']:.4f}")
                 
-            print("="*60)
+            print("="*70)
         
         return self.test_metrics
 
