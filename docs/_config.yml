@@ -1,0 +1,16 @@
+title: pulsarfitpy
+description: An Efficient Physics Informed Framework for Pulsar Analysis
+theme: jekyll-theme-cayman
+show_downloads: true
+
+github:
+  repository_url: https://github.com/jfk-astro/pulsarfitpy
+  
+markdown: kramdown
+
+plugins:
+  - jekyll-relative-links
+  
+relative_links:
+  enabled: true
+  collections: true
