@@ -11,6 +11,7 @@ import pytest
 import numpy as np
 import sympy as sp
 import torch
+
 from unittest.mock import Mock, MagicMock, patch
 from pulsarfitpy.pinn import PulsarPINN
 
