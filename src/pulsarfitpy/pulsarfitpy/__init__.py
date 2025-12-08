@@ -12,4 +12,9 @@ from .utils import configure_logging
 from .approximation import PulsarApproximation
 from .pinn import PulsarPINN
 
-__all__ = ['configure_logging', 'PulsarApproximation', 'PulsarPINN', 'print_metrics_guide']
+__all__ = [
+    "configure_logging",
+    "PulsarApproximation",
+    "PulsarPINN",
+    "print_metrics_guide",
+]
