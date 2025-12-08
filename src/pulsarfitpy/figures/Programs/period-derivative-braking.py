@@ -39,8 +39,8 @@ pinn = PulsarPINN(
     x_param="P0",
     y_param="P1",
     differential_eq=residual,
-    x_sym=logP,
-    y_sym=logPdot,
+    x_symbol=logP,
+    y_symbol=logPdot,
     learn_constants={logC: -14.7529945391535211030031860, n: 0.2561328891074048375031680},  # Initial guesses
     log_scale=True  # Already working in log-space
 )

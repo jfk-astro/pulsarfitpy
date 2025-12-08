@@ -11,6 +11,5 @@ This package provides tools for analyzing pulsar data from the ATNF catalogue us
 from .utils import configure_logging
 from .approximation import PulsarApproximation
 from .pinn import PulsarPINN
-from .metrics_reference import print_reference as print_metrics_guide
 
 __all__ = ['configure_logging', 'PulsarApproximation', 'PulsarPINN', 'print_metrics_guide']
