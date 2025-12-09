@@ -15,7 +15,7 @@ Author: Om Kasar & Saumil Sharma under jfk-astro
 import sympy as sp
 import numpy as np
 from psrqpy import QueryATNF
-from pulsarfitpy.pinn import PulsarPINN
+from modules.pinn import PulsarPINN
 
 print("=" * 80)
 print("ROBUSTNESS VALIDATION FOR PINN MODELS")

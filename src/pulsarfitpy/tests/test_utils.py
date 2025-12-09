@@ -10,7 +10,7 @@ import tempfile
 import os
 
 from pathlib import Path
-from pulsarfitpy.utils import configure_logging
+from modules.utils import configure_logging
 
 
 class TestConfigureLogging:

@@ -10,8 +10,8 @@ Author: Om Kasar & Saumil Sharma under jfk-astro
 import sympy as sp
 import numpy as np
 from psrqpy import QueryATNF
-from pulsarfitpy.pinn import PulsarPINN
-from pulsarfitpy.export_solutions import ExportPINN
+from modules.pinn import PulsarPINN
+from modules.export_solutions import ExportPINN
 import pandas as pd
 
 print("=" * 80)

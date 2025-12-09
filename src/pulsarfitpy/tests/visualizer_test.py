@@ -11,8 +11,8 @@ import numpy as np
 from psrqpy import QueryATNF
 
 
-from ..pulsarfitpy.pinn import PulsarPINN
-from ..pulsarfitpy.pinn_visualizer import VisualizePINN
+from ..modules.pinn import PulsarPINN
+from ..modules.pinn_visualizer import VisualizePINN
 
 # =============================================================================
 # STEP 1: Define Symbolic Variables and Physics Equation
