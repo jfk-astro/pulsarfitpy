@@ -384,5 +384,179 @@ def test_monte_carlo_uncertainty(physics_equation, atnf_data):
     assert uncertainties['logR']['std'] > 0
 
 
+def test_permutation_validation(physics_equation, atnf_data):
+    """Test permutation test for validating learned relationships."""
+    differential_equation, logP, logPDOT, logB, logR = physics_equation
+    logP_data, logPDOT_data, logB_data = atnf_data
+    
+    architecture_NN = [16, 32, 16]
+    learn_constants = {logR: 18.0}
+    fixed_data = {
+        logP: logP_data,
+        logPDOT: logPDOT_data,
+        logB: logB_data
+    }
+    
+    pinn = PulsarPINN(
+        differential_eq=differential_equation,
+        x_sym=logP,
+        y_sym=logB,
+        learn_constants=learn_constants,
+        log_scale=True,
+        fixed_inputs=fixed_data,
+        hidden_layers=architecture_NN,
+        train_split=0.70,
+        val_split=0.15,
+        test_split=0.15,
+        random_seed=42
+    )
+    
+    pinn.train(epochs=100, training_reports=50, physics_weight=1.0, data_weight=1.0)
+    
+    # Test with minimal permutations for speed
+    results = pinn.validate_with_permutation_test(
+        n_permutations=5,
+        epochs=50,
+        verbose=False
+    )
+    
+    assert 'real_r2' in results
+    assert 'permuted_r2_mean' in results
+    assert 'p_value' in results
+    assert 'is_significant' in results
+    
+    # Real model should generally outperform random permutations
+    assert results['real_r2'] >= results['permuted_r2_mean']
+
+
+def test_feature_shuffling_validation(physics_equation, atnf_data):
+    """Test feature shuffling for validating input importance."""
+    differential_equation, logP, logPDOT, logB, logR = physics_equation
+    logP_data, logPDOT_data, logB_data = atnf_data
+    
+    architecture_NN = [16, 32, 16]
+    learn_constants = {logR: 18.0}
+    fixed_data = {
+        logP: logP_data,
+        logPDOT: logPDOT_data,
+        logB: logB_data
+    }
+    
+    pinn = PulsarPINN(
+        differential_eq=differential_equation,
+        x_sym=logP,
+        y_sym=logB,
+        learn_constants=learn_constants,
+        log_scale=True,
+        fixed_inputs=fixed_data,
+        hidden_layers=architecture_NN,
+        train_split=0.70,
+        val_split=0.15,
+        test_split=0.15,
+        random_seed=42
+    )
+    
+    pinn.train(epochs=100, training_reports=50, physics_weight=1.0, data_weight=1.0)
+    
+    # Test with minimal shuffles for speed
+    results = pinn.validate_with_feature_shuffling(
+        n_shuffles=5,
+        epochs=50,
+        verbose=False
+    )
+    
+    assert 'real_r2' in results
+    assert 'shuffled_r2_mean' in results
+    assert 'r2_difference' in results
+    assert 'improvement_factor' in results
+    
+    # Real model should be better than shuffled features
+    assert results['r2_difference'] >= 0
+
+
+def test_impossible_physics_validation(physics_equation, atnf_data):
+    """Test impossible physics validation."""
+    differential_equation, logP, logPDOT, logB, logR = physics_equation
+    logP_data, logPDOT_data, logB_data = atnf_data
+    
+    architecture_NN = [16, 32, 16]
+    learn_constants = {logR: 18.0}
+    fixed_data = {
+        logP: logP_data,
+        logPDOT: logPDOT_data,
+        logB: logB_data
+    }
+    
+    pinn = PulsarPINN(
+        differential_eq=differential_equation,
+        x_sym=logP,
+        y_sym=logB,
+        learn_constants=learn_constants,
+        log_scale=True,
+        fixed_inputs=fixed_data,
+        hidden_layers=architecture_NN,
+        train_split=0.70,
+        val_split=0.15,
+        test_split=0.15,
+        random_seed=42
+    )
+    
+    pinn.train(epochs=100, training_reports=50, physics_weight=1.0, data_weight=1.0)
+    
+    results = pinn.validate_with_impossible_physics(
+        epochs=100,
+        verbose=False
+    )
+    
+    assert 'real_r2' in results
+    assert 'impossible_r2' in results
+    assert 'r2_difference' in results
+    assert 'real_much_better' in results
+
+
+def test_comprehensive_robustness_suite(physics_equation, atnf_data):
+    """Test running all robustness checks together."""
+    differential_equation, logP, logPDOT, logB, logR = physics_equation
+    logP_data, logPDOT_data, logB_data = atnf_data
+    
+    architecture_NN = [16, 32, 16]
+    learn_constants = {logR: 18.0}
+    fixed_data = {
+        logP: logP_data,
+        logPDOT: logPDOT_data,
+        logB: logB_data
+    }
+    
+    pinn = PulsarPINN(
+        differential_eq=differential_equation,
+        x_sym=logP,
+        y_sym=logB,
+        learn_constants=learn_constants,
+        log_scale=True,
+        fixed_inputs=fixed_data,
+        hidden_layers=architecture_NN,
+        train_split=0.70,
+        val_split=0.15,
+        test_split=0.15,
+        random_seed=42
+    )
+    
+    pinn.train(epochs=100, training_reports=50, physics_weight=1.0, data_weight=1.0)
+    
+    # Run with minimal iterations for speed
+    results = pinn.run_all_robustness_tests(
+        n_permutations=5,
+        n_shuffles=5,
+        verbose=False
+    )
+    
+    assert 'permutation_test' in results
+    assert 'feature_shuffling_test' in results
+    assert 'impossible_physics_test' in results
+    assert 'all_tests_passed' in results
+    assert isinstance(results['all_tests_passed'], bool)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+

@@ -977,3 +977,495 @@ class PulsarPINN:
             self.learnable_params.values()
         )
         self.optimizer = torch.optim.Adam(all_params, lr=1e-3)
+
+    # =========================================================================
+    # ROBUSTNESS VALIDATION METHODS
+    # =========================================================================
+
+    def validate_with_permutation_test(
+        self,
+        n_permutations: int = 100,
+        epochs: int = 1000,
+        significance_level: float = 0.05,
+        verbose: bool = True
+    ) -> Dict[str, any]:
+        """
+        Perform permutation test to validate that model learns real relationships.
+
+        Randomly shuffles target labels and retrains to establish null distribution.
+        If the real model significantly outperforms permuted models, the learned
+        relationships are likely genuine rather than spurious.
+
+        -------------------------------------------------------------------
+                                    PARAMETERS
+        -------------------------------------------------------------------
+        - n_permutations : int
+            Number of random permutations to test. Default: 100.
+
+        - epochs : int
+            Training epochs for each permutation. Default: 1000.
+
+        - significance_level : float
+            Significance threshold (e.g., 0.05 for p < 0.05). Default: 0.05.
+
+        - verbose : bool
+            Whether to print progress and results. Default: True.
+
+        -------------------------------------------------------------------
+                                     RETURNS
+        -------------------------------------------------------------------
+        - Dict[str, any]
+            Dictionary containing:
+            {
+                'real_r2': R² from actual trained model,
+                'permuted_r2_mean': Mean R² from permuted models,
+                'permuted_r2_std': Std dev of permuted R² values,
+                'permuted_r2_values': List of all permuted R² scores,
+                'p_value': Fraction of permuted models >= real model,
+                'is_significant': Whether real model significantly better,
+                'significance_level': Threshold used
+            }
+
+        -------------------------------------------------------------------
+                                      EXAMPLE
+        -------------------------------------------------------------------
+        >>> pinn.train(epochs=5000)
+        >>> validation = pinn.validate_with_permutation_test(n_permutations=100)
+        >>> if validation['is_significant']:
+        >>>     print("Model learns genuine physical relationships!")
+        >>> print(f"p-value: {validation['p_value']:.4f}")
+        """
+        if verbose:
+            print("=" * 70)
+            print("PERMUTATION TEST - VALIDATING LEARNED RELATIONSHIPS")
+            print("=" * 70)
+            print(f"Permutations: {n_permutations}")
+            print(f"Epochs per permutation: {epochs}")
+            print(f"Significance level: {significance_level}")
+            print()
+
+        # Store original model state
+        original_constants = self.store_learned_constants()
+        original_model_state = {k: v.clone() for k, v in self.model.state_dict().items()}
+        
+        # Get real model performance
+        if not self.test_metrics:
+            self.evaluate_test_set(verbose=False)
+        real_r2 = self.test_metrics.get('test_r2', 0.0)
+
+        if verbose:
+            print(f"Real model R²: {real_r2:.6f}")
+            print("\nRunning permutation tests...")
+
+        # Storage for permuted results
+        permuted_r2_values = []
+
+        for i in range(n_permutations):
+            if verbose and (i + 1) % max(1, n_permutations // 10) == 0:
+                print(f"  Permutation {i + 1}/{n_permutations}...")
+
+            # Randomly shuffle target labels (breaks real relationships)
+            permuted_indices = np.random.permutation(len(self.train_data[1]))
+            permuted_y_train = self.train_data[1][permuted_indices]
+
+            # Reinitialize model
+            self._initialize_network()
+            self._initialize_learnable_params()
+
+            # Temporarily replace training data with permuted labels
+            original_train_data = self.train_data
+            self.train_data = (self.train_data[0], permuted_y_train)
+
+            # Train on permuted data (suppress output)
+            self.train(epochs=epochs, training_reports=epochs + 1, physics_weight=1.0, data_weight=1.0)
+
+            # Evaluate on original test set
+            test_metrics = self.evaluate_test_set(verbose=False)
+            permuted_r2_values.append(test_metrics.get('test_r2', 0.0))
+
+            # Restore original training data
+            self.train_data = original_train_data
+
+        # Restore original model state
+        self.model.load_state_dict(original_model_state)
+        self.set_learn_constants(original_constants)
+
+        # Compute statistics
+        permuted_r2_array = np.array(permuted_r2_values)
+        permuted_mean = np.mean(permuted_r2_array)
+        permuted_std = np.std(permuted_r2_array, ddof=1)
+
+        # Calculate p-value: fraction of permuted models that perform as well or better
+        p_value = np.mean(permuted_r2_array >= real_r2)
+        is_significant = p_value < significance_level
+
+        results = {
+            'real_r2': real_r2,
+            'permuted_r2_mean': permuted_mean,
+            'permuted_r2_std': permuted_std,
+            'permuted_r2_values': permuted_r2_values,
+            'p_value': p_value,
+            'is_significant': is_significant,
+            'significance_level': significance_level
+        }
+
+        if verbose:
+            print("\n" + "=" * 70)
+            print("PERMUTATION TEST RESULTS")
+            print("=" * 70)
+            print(f"\nReal model R²:           {real_r2:.6f}")
+            print(f"Permuted models R² mean: {permuted_mean:.6f} ± {permuted_std:.6f}")
+            print(f"p-value:                 {p_value:.4f}")
+            print(f"\nSignificance test (α = {significance_level}):")
+            if is_significant:
+                print("  ✓ PASSED: Real model significantly better than random")
+                print("  → Model learns genuine physical relationships")
+            else:
+                print("  ✗ FAILED: Real model not significantly better than random")
+                print("  → WARNING: Model may be capturing spurious correlations")
+            print("=" * 70)
+
+        return results
+
+    def validate_with_feature_shuffling(
+        self,
+        n_shuffles: int = 50,
+        epochs: int = 1000,
+        verbose: bool = True
+    ) -> Dict[str, any]:
+        """
+        Validate model by shuffling input features to break real relationships.
+
+        Randomly shuffles x-values (breaking x-y relationship) and retrains.
+        If real model significantly outperforms shuffled models, features contain
+        genuine information.
+
+        -------------------------------------------------------------------
+                                    PARAMETERS
+        -------------------------------------------------------------------
+        - n_shuffles : int
+            Number of feature shuffling iterations. Default: 50.
+
+        - epochs : int
+            Training epochs per shuffle. Default: 1000.
+
+        - verbose : bool
+            Whether to print progress and results. Default: True.
+
+        -------------------------------------------------------------------
+                                     RETURNS
+        -------------------------------------------------------------------
+        - Dict[str, any]
+            Dictionary with validation results including R² comparisons.
+
+        -------------------------------------------------------------------
+                                      EXAMPLE
+        -------------------------------------------------------------------
+        >>> pinn.train(epochs=5000)
+        >>> validation = pinn.validate_with_feature_shuffling(n_shuffles=50)
+        >>> print(f"Real vs shuffled difference: {validation['r2_difference']:.4f}")
+        """
+        if verbose:
+            print("=" * 70)
+            print("FEATURE SHUFFLING TEST - VALIDATING INPUT IMPORTANCE")
+            print("=" * 70)
+            print(f"Shuffles: {n_shuffles}")
+            print(f"Epochs per shuffle: {epochs}")
+            print()
+
+        # Store original model state
+        original_constants = self.store_learned_constants()
+        original_model_state = {k: v.clone() for k, v in self.model.state_dict().items()}
+
+        # Get real model performance
+        if not self.test_metrics:
+            self.evaluate_test_set(verbose=False)
+        real_r2 = self.test_metrics.get('test_r2', 0.0)
+
+        if verbose:
+            print(f"Real model R²: {real_r2:.6f}")
+            print("\nRunning feature shuffling tests...")
+
+        # Storage for shuffled results
+        shuffled_r2_values = []
+
+        for i in range(n_shuffles):
+            if verbose and (i + 1) % max(1, n_shuffles // 10) == 0:
+                print(f"  Shuffle {i + 1}/{n_shuffles}...")
+
+            # Randomly shuffle input features (breaks x-y relationship)
+            shuffled_indices = np.random.permutation(len(self.train_data[0]))
+            shuffled_x_train = self.train_data[0][shuffled_indices]
+
+            # Reinitialize model
+            self._initialize_network()
+            self._initialize_learnable_params()
+
+            # Temporarily replace training data with shuffled features
+            original_train_data = self.train_data
+            self.train_data = (shuffled_x_train, self.train_data[1])
+
+            # Train on shuffled data
+            self.train(epochs=epochs, training_reports=epochs + 1, physics_weight=1.0, data_weight=1.0)
+
+            # Evaluate
+            test_metrics = self.evaluate_test_set(verbose=False)
+            shuffled_r2_values.append(test_metrics.get('test_r2', 0.0))
+
+            # Restore original training data
+            self.train_data = original_train_data
+
+        # Restore original model state
+        self.model.load_state_dict(original_model_state)
+        self.set_learn_constants(original_constants)
+
+        # Compute statistics
+        shuffled_r2_array = np.array(shuffled_r2_values)
+        shuffled_mean = np.mean(shuffled_r2_array)
+        shuffled_std = np.std(shuffled_r2_array, ddof=1)
+        r2_difference = real_r2 - shuffled_mean
+
+        results = {
+            'real_r2': real_r2,
+            'shuffled_r2_mean': shuffled_mean,
+            'shuffled_r2_std': shuffled_std,
+            'shuffled_r2_values': shuffled_r2_values,
+            'r2_difference': r2_difference,
+            'improvement_factor': real_r2 / max(shuffled_mean, 1e-10)
+        }
+
+        if verbose:
+            print("\n" + "=" * 70)
+            print("FEATURE SHUFFLING TEST RESULTS")
+            print("=" * 70)
+            print(f"\nReal model R²:           {real_r2:.6f}")
+            print(f"Shuffled models R² mean: {shuffled_mean:.6f} ± {shuffled_std:.6f}")
+            print(f"Improvement:             {r2_difference:.6f}")
+            print(f"Factor improvement:      {results['improvement_factor']:.2f}x")
+            
+            if r2_difference > 0.1:
+                print("\n  ✓ PASSED: Real features significantly better than shuffled")
+                print("  → Input features contain genuine information")
+            else:
+                print("\n  ✗ WARNING: Real features not much better than shuffled")
+                print("  → Features may not contain meaningful signal")
+            print("=" * 70)
+
+        return results
+
+    def validate_with_impossible_physics(
+        self,
+        epochs: int = 2000,
+        verbose: bool = True
+    ) -> Dict[str, any]:
+        """
+        Test model with physically impossible parameter combinations.
+
+        Inverts the differential equation or swaps variable roles to create
+        physically meaningless relationships. A robust model should perform
+        poorly on impossible physics.
+
+        -------------------------------------------------------------------
+                                    PARAMETERS
+        -------------------------------------------------------------------
+        - epochs : int
+            Training epochs for impossible physics test. Default: 2000.
+
+        - verbose : bool
+            Whether to print results. Default: True.
+
+        -------------------------------------------------------------------
+                                     RETURNS
+        -------------------------------------------------------------------
+        - Dict[str, any]
+            Dictionary with comparison between real and impossible physics.
+
+        -------------------------------------------------------------------
+                                      EXAMPLE
+        -------------------------------------------------------------------
+        >>> pinn.train(epochs=5000)
+        >>> validation = pinn.validate_with_impossible_physics()
+        >>> if validation['real_much_better']:
+        >>>     print("Model correctly rejects impossible physics!")
+        """
+        if verbose:
+            print("=" * 70)
+            print("IMPOSSIBLE PHYSICS TEST - VALIDATING PHYSICS CONSTRAINTS")
+            print("=" * 70)
+            print(f"Training epochs: {epochs}")
+            print()
+
+        # Store original model state
+        original_constants = self.store_learned_constants()
+        original_model_state = {k: v.clone() for k, v in self.model.state_dict().items()}
+
+        # Get real model performance
+        if not self.test_metrics:
+            self.evaluate_test_set(verbose=False)
+        real_r2 = self.test_metrics.get('test_r2', 0.0)
+        real_loss = self.test_metrics.get('test_loss', float('inf'))
+
+        if verbose:
+            print(f"Real physics model R²: {real_r2:.6f}")
+            print(f"Real physics loss:     {real_loss:.6e}")
+            print("\nTesting with inverted physics (swapped inputs/outputs)...")
+
+        # Swap x and y data (physically meaningless)
+        self._initialize_network()
+        self._initialize_learnable_params()
+
+        original_train_data = self.train_data
+        original_test_data = self.test_data
+
+        # Swap training data roles
+        self.train_data = (self.train_data[1], self.train_data[0])
+        self.test_data = (self.test_data[1], self.test_data[0])
+
+        # Train on impossible physics
+        self.train(epochs=epochs, training_reports=epochs + 1, physics_weight=1.0, data_weight=1.0)
+
+        # Evaluate impossible model
+        impossible_metrics = self.evaluate_test_set(verbose=False)
+        impossible_r2 = impossible_metrics.get('test_r2', 0.0)
+        impossible_loss = impossible_metrics.get('test_loss', float('inf'))
+
+        # Restore original data and model
+        self.train_data = original_train_data
+        self.test_data = original_test_data
+        self.model.load_state_dict(original_model_state)
+        self.set_learn_constants(original_constants)
+
+        # Compute comparison
+        r2_difference = real_r2 - impossible_r2
+        real_much_better = r2_difference > 0.2  # Real model should be much better
+
+        results = {
+            'real_r2': real_r2,
+            'impossible_r2': impossible_r2,
+            'real_loss': real_loss,
+            'impossible_loss': impossible_loss,
+            'r2_difference': r2_difference,
+            'real_much_better': real_much_better
+        }
+
+        if verbose:
+            print("\n" + "=" * 70)
+            print("IMPOSSIBLE PHYSICS TEST RESULTS")
+            print("=" * 70)
+            print(f"\nReal physics model:")
+            print(f"  R²:   {real_r2:.6f}")
+            print(f"  Loss: {real_loss:.6e}")
+            print(f"\nImpossible physics model (swapped variables):")
+            print(f"  R²:   {impossible_r2:.6f}")
+            print(f"  Loss: {impossible_loss:.6e}")
+            print(f"\nDifference: {r2_difference:.6f}")
+            
+            if real_much_better:
+                print("\n  ✓ PASSED: Real physics significantly better than impossible")
+                print("  → Model respects physical constraints")
+            else:
+                print("\n  ✗ WARNING: Real physics not much better than impossible")
+                print("  → Model may not be learning genuine physics")
+            print("=" * 70)
+
+        return results
+
+    def run_all_robustness_tests(
+        self,
+        n_permutations: int = 100,
+        n_shuffles: int = 50,
+        verbose: bool = True
+    ) -> Dict[str, any]:
+        """
+        Run complete suite of robustness validation tests.
+
+        Executes permutation test, feature shuffling, and impossible physics
+        validation to comprehensively assess model reliability.
+
+        -------------------------------------------------------------------
+                                    PARAMETERS
+        -------------------------------------------------------------------
+        - n_permutations : int
+            Number of permutations for label shuffling test. Default: 100.
+
+        - n_shuffles : int
+            Number of shuffles for feature shuffling test. Default: 50.
+
+        - verbose : bool
+            Whether to print detailed results. Default: True.
+
+        -------------------------------------------------------------------
+                                     RETURNS
+        -------------------------------------------------------------------
+        - Dict[str, any]
+            Dictionary containing all test results and overall assessment.
+
+        -------------------------------------------------------------------
+                                      EXAMPLE
+        -------------------------------------------------------------------
+        >>> pinn.train(epochs=5000)
+        >>> robustness = pinn.run_all_robustness_tests()
+        >>> if robustness['all_tests_passed']:
+        >>>     print("Model passed all robustness checks!")
+        """
+        if verbose:
+            print("\n" + "=" * 70)
+            print("COMPREHENSIVE ROBUSTNESS VALIDATION SUITE")
+            print("=" * 70)
+            print()
+
+        # Run all tests
+        permutation_results = self.validate_with_permutation_test(
+            n_permutations=n_permutations,
+            epochs=1000,
+            verbose=verbose
+        )
+
+        if verbose:
+            print("\n")
+
+        feature_results = self.validate_with_feature_shuffling(
+            n_shuffles=n_shuffles,
+            epochs=1000,
+            verbose=verbose
+        )
+
+        if verbose:
+            print("\n")
+
+        physics_results = self.validate_with_impossible_physics(
+            epochs=2000,
+            verbose=verbose
+        )
+
+        # Overall assessment
+        all_tests_passed = (
+            permutation_results['is_significant'] and
+            feature_results['r2_difference'] > 0.1 and
+            physics_results['real_much_better']
+        )
+
+        results = {
+            'permutation_test': permutation_results,
+            'feature_shuffling_test': feature_results,
+            'impossible_physics_test': physics_results,
+            'all_tests_passed': all_tests_passed
+        }
+
+        if verbose:
+            print("\n" + "=" * 70)
+            print("OVERALL ROBUSTNESS ASSESSMENT")
+            print("=" * 70)
+            print(f"\nPermutation test:      {'✓ PASS' if permutation_results['is_significant'] else '✗ FAIL'}")
+            print(f"Feature shuffling:     {'✓ PASS' if feature_results['r2_difference'] > 0.1 else '✗ FAIL'}")
+            print(f"Impossible physics:    {'✓ PASS' if physics_results['real_much_better'] else '✗ FAIL'}")
+            print(f"\n{'='*70}")
+            if all_tests_passed:
+                print("VERDICT: Model demonstrates robust learning of genuine physics")
+                print("         Safe to use for scientific inference")
+            else:
+                print("VERDICT: Model shows signs of spurious correlations")
+                print("         Use caution in scientific interpretation")
+            print("=" * 70)
+
+        return results
