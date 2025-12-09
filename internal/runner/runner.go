@@ -2,56 +2,79 @@ package runner
 
 import (
 	"bytes"
+	_ "embed"
 	"fmt"
+	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 )
 
+//go:embed headless.py
+var headlessPyScript []byte
+
 func RunApproximation(xParam, yParam string, degree int, logX, logY bool) (string, error) {
+	scriptPath, cleanup, err := writeEmbeddedScript()
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp script: %w", err)
+	}
+	defer cleanup()
+
 	pythonCmd := getPythonCommand()
-	scriptPath := getScriptPath("headless.py")
 
 	args := []string{
 		scriptPath,
-		"approximate",
-		"--x-param", xParam,
-		"--y-param", yParam,
-		"--degree", fmt.Sprintf("%d", degree),
-	}
-
-	if logX {
-		args = append(args, "--log-x")
-	}
-	if logY {
-		args = append(args, "--log-y")
+		"fit",
+		"--json",
+		fmt.Sprintf(`{"x_param":"%s","y_param":"%s","test_degree":%d,"log_x":%t,"log_y":%t}`,
+			xParam, yParam, degree, logX, logY),
 	}
 
 	return executePython(pythonCmd, args...)
 }
 
 func RunPINN(xParam, yParam string, epochs int) (string, error) {
+	scriptPath, cleanup, err := writeEmbeddedScript()
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp script: %w", err)
+	}
+	defer cleanup()
+
 	pythonCmd := getPythonCommand()
-	scriptPath := getScriptPath("headless.py")
 
 	args := []string{
 		scriptPath,
-		"pinn",
-		"--x-param", xParam,
-		"--y-param", yParam,
-		"--epochs", fmt.Sprintf("%d", epochs),
+		"fit",
+		"--json",
+		fmt.Sprintf(`{"x_param":"%s","y_param":"%s","test_degree":3,"epochs":%d}`,
+			xParam, yParam, epochs),
 	}
 
 	return executePython(pythonCmd, args...)
 }
 
 func RunQuery(params []string) (string, error) {
-	pythonCmd := getPythonCommand()
-	scriptPath := getScriptPath("headless.py")
+	scriptPath, cleanup, err := writeEmbeddedScript()
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp script: %w", err)
+	}
+	defer cleanup()
 
-	args := []string{scriptPath, "query"}
-	for _, p := range params {
-		args = append(args, "--param", p)
+	pythonCmd := getPythonCommand()
+
+	paramsJSON := "["
+	for i, p := range params {
+		if i > 0 {
+			paramsJSON += ","
+		}
+		paramsJSON += fmt.Sprintf(`"%s"`, p)
+	}
+	paramsJSON += "]"
+
+	args := []string{
+		scriptPath,
+		"query",
+		"--json",
+		fmt.Sprintf(`{"params":%s}`, paramsJSON),
 	}
 
 	return executePython(pythonCmd, args...)
@@ -65,11 +88,28 @@ func getPythonCommand() string {
 	return "python3"
 }
 
-func getScriptPath(filename string) string {
-	_, file, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(file), "..", "..")
+func writeEmbeddedScript() (string, func(), error) {
+	tmpFile, err := os.CreateTemp("", "pulsarfitpy_*.py")
+	if err != nil {
+		return "", nil, err
+	}
 
-	return filepath.Join(projectRoot, "src", "pulsarfitpy", "pulsarfitpy", filename)
+	if _, err := tmpFile.Write(headlessPyScript); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+		return "", nil, err
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		os.Remove(tmpFile.Name())
+		return "", nil, err
+	}
+
+	cleanup := func() {
+		os.Remove(tmpFile.Name())
+	}
+
+	return tmpFile.Name(), cleanup, nil
 }
 
 func executePython(pythonCmd string, args ...string) (string, error) {

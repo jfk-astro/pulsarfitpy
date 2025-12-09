@@ -144,7 +144,7 @@ ax2.grid(True, alpha=0.3)
 
 plt.tight_layout()
 plt.savefig("pinn_quantitative_metrics.png", dpi=150, bbox_inches="tight")
-print("\n✓ Figure saved as 'pinn_quantitative_metrics.png'")
+print("\nFigure saved as 'pinn_quantitative_metrics.png'")
 plt.show()
 
 # =============================================================================
@@ -211,7 +211,7 @@ ax2.grid(True, alpha=0.3)
 
 plt.tight_layout()
 plt.savefig("polynomial_quantitative_metrics.png", dpi=150, bbox_inches="tight")
-print("\n✓ Figure saved as 'polynomial_quantitative_metrics.png'")
+print("\nFigure saved as 'polynomial_quantitative_metrics.png'")
 plt.show()
 
 # =============================================================================
@@ -262,4 +262,4 @@ print(
 """
 )
 print("=" * 80)
-print("\n✓ Analysis complete!")
+print("\nAnalysis complete!")

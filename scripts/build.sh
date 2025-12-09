@@ -37,7 +37,7 @@ clean_build() {
 
     if [ -d "$BIN_DIR" ]; then
         rm -rf "$BIN_DIR"
-        echo -e "${GREEN}✓ Cleaned $BIN_DIR${NC}"
+        echo -e "${GREEN}Cleaned $BIN_DIR${NC}"
     else
         echo -e "${GRAY}Nothing to clean${NC}"
     fi
@@ -57,7 +57,7 @@ build_app() {
     go build -o "$OUTPUT" "$MAIN_PATH"
     
     if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓ Build successful: $OUTPUT${NC}"
+        echo -e "${GREEN}Build successful: $OUTPUT${NC}"
         
         if [[ "$OSTYPE" == "darwin"* ]]; then
             size=$(stat -f%z "$OUTPUT" | awk '{print $1/1024/1024}')
@@ -71,7 +71,7 @@ build_app() {
         
         return 0
     else
-        echo -e "${RED}✗ Build failed${NC}"
+        echo -e "${RED}Build failed${NC}"
         return 1
     fi
 }
@@ -82,7 +82,7 @@ run_app() {
         echo -e "${GRAY}----------------------------------------${NC}"
         "$OUTPUT"
     else
-        echo -e "${RED}✗ Executable not found: $OUTPUT${NC}"
+        echo -e "${RED}Executable not found: $OUTPUT${NC}"
         echo -e "${YELLOW}Run without 'run' argument to build first${NC}"
         exit 1
     fi
