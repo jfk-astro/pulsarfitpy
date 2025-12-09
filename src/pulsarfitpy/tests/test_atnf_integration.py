@@ -279,5 +279,110 @@ def test_export_predictions(physics_equation, atnf_data, tmp_path):
     assert metrics_file.exists()
 
 
+def test_bootstrap_uncertainty(physics_equation, atnf_data):
+    """Test bootstrap uncertainty estimation for learned constants."""
+    differential_equation, logP, logPDOT, logB, logR = physics_equation
+    logP_data, logPDOT_data, logB_data = atnf_data
+    
+    architecture_NN = [16, 32, 16]
+    learn_constants = {logR: 18.0}
+    fixed_data = {
+        logP: logP_data,
+        logPDOT: logPDOT_data,
+        logB: logB_data
+    }
+    
+    pinn = PulsarPINN(
+        differential_eq=differential_equation,
+        x_sym=logP,
+        y_sym=logB,
+        learn_constants=learn_constants,
+        log_scale=True,
+        fixed_inputs=fixed_data,
+        hidden_layers=architecture_NN,
+        train_split=0.70,
+        val_split=0.15,
+        test_split=0.15,
+        random_seed=42
+    )
+    
+    pinn.train(epochs=100, training_reports=50, physics_weight=1.0, data_weight=1.0)
+    
+    # Test with minimal bootstrap iterations for speed
+    uncertainties = pinn.bootstrap_uncertainty(
+        n_bootstrap=10,
+        sample_fraction=0.8,
+        epochs=50,
+        confidence_level=0.95,
+        verbose=False
+    )
+    
+    assert 'logR' in uncertainties
+    assert 'mean' in uncertainties['logR']
+    assert 'std' in uncertainties['logR']
+    assert 'ci_lower' in uncertainties['logR']
+    assert 'ci_upper' in uncertainties['logR']
+    assert 'original' in uncertainties['logR']
+    
+    # Check that confidence interval brackets the mean
+    assert uncertainties['logR']['ci_lower'] < uncertainties['logR']['mean']
+    assert uncertainties['logR']['mean'] < uncertainties['logR']['ci_upper']
+    
+    # Check that std dev is positive
+    assert uncertainties['logR']['std'] > 0
+
+
+def test_monte_carlo_uncertainty(physics_equation, atnf_data):
+    """Test Monte Carlo uncertainty estimation for learned constants."""
+    differential_equation, logP, logPDOT, logB, logR = physics_equation
+    logP_data, logPDOT_data, logB_data = atnf_data
+    
+    architecture_NN = [16, 32, 16]
+    learn_constants = {logR: 18.0}
+    fixed_data = {
+        logP: logP_data,
+        logPDOT: logPDOT_data,
+        logB: logB_data
+    }
+    
+    pinn = PulsarPINN(
+        differential_eq=differential_equation,
+        x_sym=logP,
+        y_sym=logB,
+        learn_constants=learn_constants,
+        log_scale=True,
+        fixed_inputs=fixed_data,
+        hidden_layers=architecture_NN,
+        train_split=0.70,
+        val_split=0.15,
+        test_split=0.15,
+        random_seed=42
+    )
+    
+    pinn.train(epochs=100, training_reports=50, physics_weight=1.0, data_weight=1.0)
+    
+    # Test with minimal simulations for speed
+    uncertainties = pinn.monte_carlo_uncertainty(
+        n_simulations=10,
+        noise_level=0.01,
+        confidence_level=0.95,
+        verbose=False
+    )
+    
+    assert 'logR' in uncertainties
+    assert 'mean' in uncertainties['logR']
+    assert 'std' in uncertainties['logR']
+    assert 'ci_lower' in uncertainties['logR']
+    assert 'ci_upper' in uncertainties['logR']
+    assert 'original' in uncertainties['logR']
+    
+    # Check that confidence interval brackets the mean
+    assert uncertainties['logR']['ci_lower'] < uncertainties['logR']['mean']
+    assert uncertainties['logR']['mean'] < uncertainties['logR']['ci_upper']
+    
+    # Check that std dev is positive
+    assert uncertainties['logR']['std'] > 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

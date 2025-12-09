@@ -266,9 +266,12 @@ class ExportPINN:
         self,
         filepath: str,
         additional_info: Optional[Dict[str, Any]] = None,
+        include_uncertainty: bool = False,
+        uncertainty_method: str = 'bootstrap',
+        n_iterations: int = 100,
     ) -> None:
         """
-        Save only learned constants to a separate CSV file.
+        Save learned constants to a CSV file with optional uncertainty estimates.
 
         -------------------------------------------------------------------
                                     PARAMETERS
@@ -280,16 +283,54 @@ class ExportPINN:
             Additional information to include alongside constants.
             Default: None.
 
+        - include_uncertainty : bool
+            Whether to compute and include uncertainty estimates.
+            Default: False.
+
+        - uncertainty_method : str
+            Method for uncertainty estimation: 'bootstrap' or 'monte_carlo'.
+            Default: 'bootstrap'.
+
+        - n_iterations : int
+            Number of iterations for uncertainty estimation (bootstrap samples
+            or Monte Carlo simulations). Default: 100.
+
         -------------------------------------------------------------------
                                      RETURNS
         -------------------------------------------------------------------
         None
-            Writes CSV file with learned constants.
+            Writes CSV file with learned constants and optional uncertainties.
+
+        -------------------------------------------------------------------
+                                      NOTES
+        -------------------------------------------------------------------
+        When include_uncertainty=True, the following columns are added:
+        - uncertainty_std: Standard deviation from resampling/simulation
+        - ci_lower: Lower bound of 95% confidence interval
+        - ci_upper: Upper bound of 95% confidence interval
+        - uncertainty_method: Method used ('bootstrap' or 'monte_carlo')
         """
 
         # Create output directory if needed
         filepath_obj = Path(filepath)
         filepath_obj.parent.mkdir(parents=True, exist_ok=True)
+
+        # Get uncertainty estimates if requested
+        uncertainties = None
+        if include_uncertainty:
+            logger.info(f"Computing uncertainty using {uncertainty_method} method...")
+            if uncertainty_method == 'bootstrap':
+                uncertainties = self.pinn.bootstrap_uncertainty(
+                    n_bootstrap=n_iterations,
+                    verbose=False
+                )
+            elif uncertainty_method == 'monte_carlo':
+                uncertainties = self.pinn.monte_carlo_uncertainty(
+                    n_simulations=n_iterations,
+                    verbose=False
+                )
+            else:
+                raise ValueError(f"Unknown uncertainty method: {uncertainty_method}")
 
         # Build data for CSV
         constants_data = []
@@ -299,8 +340,18 @@ class ExportPINN:
                 "value": param.item(),
                 "equation": str(self.pinn.differential_eq),
             }
+            
+            # Add uncertainty information if available
+            if uncertainties and name in uncertainties:
+                row["uncertainty_std"] = uncertainties[name]['std']
+                row["ci_lower_95"] = uncertainties[name]['ci_lower']
+                row["ci_upper_95"] = uncertainties[name]['ci_upper']
+                row["uncertainty_method"] = uncertainty_method
+                row["n_iterations"] = n_iterations
+            
             if additional_info:
                 row.update(additional_info)
+            
             constants_data.append(row)
 
         # Create DataFrame
@@ -311,6 +362,9 @@ class ExportPINN:
 
         logger.info(f"Learned constants saved to {filepath}")
         logger.info(f"  - Number of constants: {len(constants_data)}")
+        if include_uncertainty:
+            logger.info(f"  - Uncertainty method: {uncertainty_method}")
+            logger.info(f"  - Iterations: {n_iterations}")
 
     def save_metrics_to_csv(
         self,

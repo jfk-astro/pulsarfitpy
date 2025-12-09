@@ -673,6 +673,283 @@ class PulsarPINN:
         """
         return {name: param.item() for name, param in self.learnable_params.items()}
 
+    def bootstrap_uncertainty(
+        self,
+        n_bootstrap: int = 100,
+        sample_fraction: float = 0.8,
+        epochs: int = 1000,
+        confidence_level: float = 0.95,
+        verbose: bool = True
+    ) -> Dict[str, Dict[str, float]]:
+        """
+        Estimate uncertainty in learned constants using bootstrap resampling.
+
+        Performs bootstrap resampling to quantify uncertainty in learned physical
+        constants. For each bootstrap iteration, randomly samples training data,
+        retrains the model, and records the learned constant values.
+
+        -------------------------------------------------------------------
+                                    PARAMETERS
+        -------------------------------------------------------------------
+        - n_bootstrap : int
+            Number of bootstrap iterations. Default: 100.
+
+        - sample_fraction : float
+            Fraction of training data to sample in each iteration (0.0-1.0).
+            Default: 0.8 (80% of training data).
+
+        - epochs : int
+            Number of training epochs per bootstrap iteration. Default: 1000.
+
+        - confidence_level : float
+            Confidence level for intervals (e.g., 0.95 for 95% CI). Default: 0.95.
+
+        - verbose : bool
+            Whether to print progress messages. Default: True.
+
+        -------------------------------------------------------------------
+                                     RETURNS
+        -------------------------------------------------------------------
+        - Dict[str, Dict[str, float]]
+            Nested dictionary with uncertainty statistics for each constant:
+            {
+                'constant_name': {
+                    'mean': mean_value,
+                    'std': standard_deviation,
+                    'ci_lower': lower_confidence_bound,
+                    'ci_upper': upper_confidence_bound,
+                    'original': original_fitted_value
+                }
+            }
+
+        -------------------------------------------------------------------
+                                      EXAMPLE
+        -------------------------------------------------------------------
+        >>> pinn.train(epochs=5000)
+        >>> uncertainties = pinn.bootstrap_uncertainty(n_bootstrap=100)
+        >>> print(f"logR = {uncertainties['logR']['mean']:.3f} ± {uncertainties['logR']['std']:.3f}")
+        >>> print(f"95% CI: [{uncertainties['logR']['ci_lower']:.3f}, {uncertainties['logR']['ci_upper']:.3f}]")
+        """
+        if verbose:
+            print("=" * 70)
+            print("BOOTSTRAP UNCERTAINTY ESTIMATION")
+            print("=" * 70)
+            print(f"Bootstrap iterations: {n_bootstrap}")
+            print(f"Sample fraction: {sample_fraction:.1%}")
+            print(f"Training epochs per iteration: {epochs}")
+            print(f"Confidence level: {confidence_level:.1%}")
+            print()
+
+        # Store original model state
+        original_constants = self.store_learned_constants()
+        original_model_state = {k: v.clone() for k, v in self.model.state_dict().items()}
+
+        # Storage for bootstrap samples
+        bootstrap_constants = {name: [] for name in self.learnable_params.keys()}
+
+        # Perform bootstrap iterations
+        for i in range(n_bootstrap):
+            if verbose and (i + 1) % max(1, n_bootstrap // 10) == 0:
+                print(f"  Bootstrap iteration {i + 1}/{n_bootstrap}...")
+
+            # Randomly sample training data with replacement
+            n_samples = int(len(self.train_data[0]) * sample_fraction)
+            indices = np.random.choice(len(self.train_data[0]), size=n_samples, replace=True)
+
+            # Create bootstrap sample
+            boot_x = self.train_data[0][indices]
+            boot_y = self.train_data[1][indices]
+
+            # Reinitialize model with same architecture
+            self._initialize_network()
+            self._initialize_learnable_params()
+
+            # Temporarily replace training data
+            original_train_data = self.train_data
+            self.train_data = (boot_x, boot_y)
+
+            # Train on bootstrap sample (suppress training output)
+            self.train(epochs=epochs, training_reports=epochs + 1, physics_weight=1.0, data_weight=1.0)
+
+            # Store learned constants from this iteration
+            learned = self.store_learned_constants()
+            for name, value in learned.items():
+                bootstrap_constants[name].append(value)
+
+            # Restore original training data
+            self.train_data = original_train_data
+
+        # Restore original model state
+        self.model.load_state_dict(original_model_state)
+        self.set_learn_constants(original_constants)
+
+        # Compute statistics
+        alpha = 1 - confidence_level
+        results = {}
+
+        for name, values in bootstrap_constants.items():
+            values_array = np.array(values)
+            mean_val = np.mean(values_array)
+            std_val = np.std(values_array, ddof=1)  # Sample standard deviation
+            ci_lower = np.percentile(values_array, 100 * alpha / 2)
+            ci_upper = np.percentile(values_array, 100 * (1 - alpha / 2))
+
+            results[name] = {
+                'mean': mean_val,
+                'std': std_val,
+                'ci_lower': ci_lower,
+                'ci_upper': ci_upper,
+                'original': original_constants[name]
+            }
+
+            if verbose:
+                print(f"\n{name}:")
+                print(f"  Original fitted value: {original_constants[name]:.6f}")
+                print(f"  Bootstrap mean:        {mean_val:.6f}")
+                print(f"  Bootstrap std dev:     {std_val:.6f}")
+                print(f"  {confidence_level:.0%} CI: [{ci_lower:.6f}, {ci_upper:.6f}]")
+
+        if verbose:
+            print("\n" + "=" * 70)
+
+        return results
+
+    def monte_carlo_uncertainty(
+        self,
+        n_simulations: int = 1000,
+        noise_level: float = 0.01,
+        confidence_level: float = 0.95,
+        verbose: bool = True
+    ) -> Dict[str, Dict[str, float]]:
+        """
+        Estimate uncertainty using Monte Carlo simulation with data perturbation.
+
+        Adds Gaussian noise to the input data and re-evaluates the trained model
+        to assess sensitivity of learned constants to data perturbations.
+
+        -------------------------------------------------------------------
+                                    PARAMETERS
+        -------------------------------------------------------------------
+        - n_simulations : int
+            Number of Monte Carlo simulations. Default: 1000.
+
+        - noise_level : float
+            Standard deviation of Gaussian noise relative to data std dev.
+            Default: 0.01 (1% noise).
+
+        - confidence_level : float
+            Confidence level for intervals (e.g., 0.95 for 95% CI). Default: 0.95.
+
+        - verbose : bool
+            Whether to print progress messages. Default: True.
+
+        -------------------------------------------------------------------
+                                     RETURNS
+        -------------------------------------------------------------------
+        - Dict[str, Dict[str, float]]
+            Nested dictionary with uncertainty statistics for each constant:
+            {
+                'constant_name': {
+                    'mean': mean_value,
+                    'std': standard_deviation,
+                    'ci_lower': lower_confidence_bound,
+                    'ci_upper': upper_confidence_bound,
+                    'original': original_fitted_value
+                }
+            }
+
+        -------------------------------------------------------------------
+                                      EXAMPLE
+        -------------------------------------------------------------------
+        >>> pinn.train(epochs=5000)
+        >>> uncertainties = pinn.monte_carlo_uncertainty(n_simulations=1000)
+        >>> print(f"logR = {uncertainties['logR']['mean']:.3f} ± {uncertainties['logR']['std']:.3f}")
+        """
+        if verbose:
+            print("=" * 70)
+            print("MONTE CARLO UNCERTAINTY ESTIMATION")
+            print("=" * 70)
+            print(f"Simulations: {n_simulations}")
+            print(f"Noise level: {noise_level:.1%} of data std dev")
+            print(f"Confidence level: {confidence_level:.1%}")
+            print()
+
+        # Store original constants and model
+        original_constants = self.store_learned_constants()
+        original_model_state = {k: v.clone() for k, v in self.model.state_dict().items()}
+
+        # Storage for Monte Carlo samples
+        mc_constants = {name: [] for name in self.learnable_params.keys()}
+
+        # Get data standard deviations for noise scaling
+        x_std = self.train_data[0].std()
+        y_std = self.train_data[1].std()
+
+        for i in range(n_simulations):
+            if verbose and (i + 1) % max(1, n_simulations // 10) == 0:
+                print(f"  Simulation {i + 1}/{n_simulations}...")
+
+            # Add Gaussian noise to data
+            x_noise = torch.randn_like(self.train_data[0]) * (noise_level * x_std)
+            y_noise = torch.randn_like(self.train_data[1]) * (noise_level * y_std)
+
+            perturbed_x = self.train_data[0] + x_noise
+            perturbed_y = self.train_data[1] + y_noise
+
+            # Reinitialize and train on perturbed data
+            self._initialize_network()
+            self._initialize_learnable_params()
+
+            # Temporarily replace training data
+            original_train_data = self.train_data
+            self.train_data = (perturbed_x, perturbed_y)
+
+            # Quick training (fewer epochs than bootstrap)
+            self.train(epochs=500, training_reports=501, physics_weight=1.0, data_weight=1.0)
+
+            # Store learned constants
+            learned = self.store_learned_constants()
+            for name, value in learned.items():
+                mc_constants[name].append(value)
+
+            # Restore original training data
+            self.train_data = original_train_data
+
+        # Restore original model state
+        self.model.load_state_dict(original_model_state)
+        self.set_learn_constants(original_constants)
+
+        # Compute statistics
+        alpha = 1 - confidence_level
+        results = {}
+
+        for name, values in mc_constants.items():
+            values_array = np.array(values)
+            mean_val = np.mean(values_array)
+            std_val = np.std(values_array, ddof=1)
+            ci_lower = np.percentile(values_array, 100 * alpha / 2)
+            ci_upper = np.percentile(values_array, 100 * (1 - alpha / 2))
+
+            results[name] = {
+                'mean': mean_val,
+                'std': std_val,
+                'ci_lower': ci_lower,
+                'ci_upper': ci_upper,
+                'original': original_constants[name]
+            }
+
+            if verbose:
+                print(f"\n{name}:")
+                print(f"  Original fitted value: {original_constants[name]:.6f}")
+                print(f"  Monte Carlo mean:      {mean_val:.6f}")
+                print(f"  Monte Carlo std dev:   {std_val:.6f}")
+                print(f"  {confidence_level:.0%} CI: [{ci_lower:.6f}, {ci_upper:.6f}]")
+
+        if verbose:
+            print("\n" + "=" * 70)
+
+        return results
+
     def set_learn_constants(self, new_constants: Dict[str, float]) -> None:
         """
         Update learnable constants with new values added to the differential equation
