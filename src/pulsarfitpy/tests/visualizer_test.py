@@ -9,9 +9,10 @@ magnetic field.
 import sympy as sp
 import numpy as np
 from psrqpy import QueryATNF
-from src.pulsarfitpy.pulsarfitpy.pinn import PulsarPINN
-from src.pulsarfitpy.pulsarfitpy.pinn_visualizer import VisualizePINN
-from src.pulsarfitpy.pulsarfitpy.export_solutions import ExportPINN
+
+
+from ..pulsarfitpy.pinn import PulsarPINN
+from ..pulsarfitpy.pinn_visualizer import VisualizePINN
 
 # =============================================================================
 # STEP 1: Define Symbolic Variables and Physics Equation
@@ -81,11 +82,14 @@ pinn = PulsarPINN(
     learn_constants=learn_constants,
     log_scale=True,
     fixed_inputs=fixed_data,
+    input_layer=3,
     hidden_layers=architecture_NN,
+    output_layer=3,
     train_split=0.70,
     val_split=0.15,
     test_split=0.15,
-    random_seed=42
+    random_seed=42,
+    solution_name="Magnetic Field PINN Model"
 )
 
 # =============================================================================
@@ -150,27 +154,3 @@ visualizer.plot_predictions_vs_data(
     figsize=(7, 8),
     title='PINN: Pulsar Magnetic Field vs Period'
 )
-
-# =============================================================================
-# STEP 11: Save Predictions to CSV
-# =============================================================================
-
-print("\n" + "="*70)
-print("EXPORT PHASE")
-print("="*70)
-
-output_filepath = "results/pulsar_pinn_predictions.csv"
-
-# Initialize with default filename and solution name
-exporter = ExportPINN(pinn_model=pinn)
-
-# Export predictions (uses default filename)
-exporter.save_predictions_to_csv(x_value_name="log(Period) [log(s)]", y_value_name="log(Surface Magnetic Field) [log(G)]", filepath=output_filepath)
-
-# Export constants (automatically becomes "pulsar_analysis_constants.csv")
-exporter.save_learned_constants_to_csv(filepath=output_filepath)
-
-# Or override with custom filepath
-exporter.save_metrics_to_csv(filepath="results/metrics.csv")
-
-print("  Plot saved to: results/pulsar_pinn_prediction_plot.png")

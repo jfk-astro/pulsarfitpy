@@ -8,16 +8,14 @@ Author: Om Kasar & Saumil Sharma under jfk-astro
 """
 
 # TODO: Fix PINN training progress logger
+# TODO: Add custom input & output layers
 
 import numpy as np
 import torch
 import torch.nn as nn
 import sympy as sp
-import matplotlib.pyplot as plt
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple
 import logging
-import pandas as pd
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -82,10 +80,6 @@ class PulsarPINN:
     - random_seed : int, optional
         Random seed for reproducible data splitting. Default: 42.
 
-    - solution_name : Optional[str], optional
-        Descriptive name for the solution/model being computed.
-        Used in CSV output for identification. Default: None.
-
     --------------------------------------------------------------------------------
                                        ATTRIBUTES
     --------------------------------------------------------------------------------
@@ -119,7 +113,6 @@ class PulsarPINN:
         val_split: float = 0.15,
         test_split: float = 0.15,
         random_seed: int = 42,
-        solution_name: Optional[str] = None,
     ):
 
         # Inputs
@@ -129,7 +122,6 @@ class PulsarPINN:
         self.learn_constants = learn_constants
         self.fixed_inputs = fixed_inputs
         self.log_scale = log_scale
-        self.solution_name = solution_name
 
         # Neural Network configurations
         self.input_layer = input_layer
@@ -248,14 +240,19 @@ class PulsarPINN:
 
     def _numpy_array_to_tensor(self, array: np.ndarray) -> torch.Tensor:
         """Convert numpy array to PyTorch tensor."""
-        return torch.tensor(array, dtype=torch.float64).view(-1, 1)
+        tensor = torch.tensor(array, dtype=torch.float64)
+
+        # Only reshape if 1D array, otherwise preserve shape
+        if tensor.dim() == 1:
+            tensor = tensor.view(-1, 1)
+        return tensor
 
     def _build_neural_network(self):
         """Constructs the physics-informed neural network."""
 
         layers = []
 
-        # Add first input layer
+        # Add first input layer (start with the specified input dimension)
         input_dim = self.input_layer
 
         # Build hidden layers with Tanh activation functions based on hidden_layers
@@ -264,7 +261,7 @@ class PulsarPINN:
             layers.append(nn.Tanh())  # Add non-linearity
             input_dim = hidden_dim
 
-        # Add final output layer
+        # Add final output layer (use the specified output dimension)
         layers.append(nn.Linear(input_dim, self.output_layer))
 
         # Combine all layers into sequential model
@@ -281,7 +278,7 @@ class PulsarPINN:
             self.learnable_params.values()
         )
         self.optimizer = torch.optim.Adam(all_params, lr=1e-3)
-        logger.info(f"Network architecture: {self.hidden_layers}")
+        logger.info(f"Network architecture: {self.input_layer} → {self.hidden_layers} → {self.output_layer}")
 
     def _create_physics_residual(self):
         """Convert symbolic differential equation to callable residual function."""
@@ -660,456 +657,8 @@ class PulsarPINN:
 
         return x_extended.numpy().flatten(), y_extended.numpy().flatten()
 
-    def plot_loss_curves(self, log_scale: bool = True) -> None:
-        """
-        Plot training and validation loss curves.
-
-        -------------------------------------------------------------------
-                                    PARAMETERS
-        -------------------------------------------------------------------
-        - log_scale : bool
-            Use logarithmic y-axis. Default: True.
-        """
-        # Create figure with two subplots side-by-side (FIXED: properly unpack figure and axes)
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-
-        # Create array of epoch numbers for x-axis (0, 1, 2, ..., num_epochs-1)
-        epochs = np.arange(len(self.loss_log["total"]))
-
-        # LEFT PLOT: Total Loss (Training vs Validation)
-        # Plot training total loss as solid line
-        ax1.plot(epochs, self.loss_log["total"], label="Train", linewidth=2)
-
-        # Plot validation total loss if it exists (checked every val_interval epochs)
-        if self.loss_log["val_total"]:
-            # Calculate epoch numbers where validation was performed
-            val_epochs = np.linspace(
-                0, len(epochs) - 1, len(self.loss_log["val_total"])
-            )
-            ax1.plot(
-                val_epochs,
-                self.loss_log["val_total"],
-                label="Validation",
-                marker="o",
-                markersize=4,
-            )
-
-        # Configure left plot appearance
-        ax1.set_xlabel("Epoch")
-        ax1.set_ylabel("Total Loss")
-        ax1.set_title("Total Loss")
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
-        if log_scale:
-            ax1.set_yscale("log")
-
-        # RIGHT PLOT: Loss Components (Physics vs Data)
-        # Plot training physics and data losses as dashed lines
-        ax2.plot(epochs, self.loss_log["physics"], label="Physics", linestyle="--")
-        ax2.plot(epochs, self.loss_log["data"], label="Data", linestyle="--")
-
-        # Plot validation component losses if they exist
-        if self.loss_log["val_physics"]:
-            ax2.plot(
-                val_epochs,
-                self.loss_log["val_physics"],
-                label="Val Physics",
-                linestyle=":",
-                marker="s",
-                markersize=3,
-            )
-            ax2.plot(
-                val_epochs,
-                self.loss_log["val_data"],
-                label="Val Data",
-                linestyle=":",
-                marker="s",
-                markersize=3,
-            )
-
-        # Configure right plot appearance
-        ax2.set_xlabel("Epoch")
-        ax2.set_ylabel("Loss")
-        ax2.set_title("Loss Components")
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
-        if log_scale:
-            ax2.set_yscale("log")
-
-        # Adjust spacing between subplots and display
-        plt.tight_layout()
-        plt.show()
-
-        # Decide to do log scaling based on class input
-        if log_scale:
-            ax2.set_yscale("log")
-
-        plt.tight_layout()
-        plt.show()
-
-    def plot_predictions_vs_data(
-        self,
-        x_values: Optional[np.ndarray] = None,
-        y_predictions: Optional[np.ndarray] = None,
-        x_name: str = None,
-        y_name: str = None,
-        save_path: Optional[str] = None,
-        figsize: Tuple[int, int] = (12, 8),
-        title: Optional[str] = None,
-    ) -> None:
-        """
-        Create comparison plot of model predictions vs. raw data.
-
-        -------------------------------------------------------------------
-                                    PARAMETERS
-        -------------------------------------------------------------------
-        - x_values : Optional[np.ndarray]
-            X values for prediction curve.
-            If None, generates extended range.
-
-        - y_predictions : Optional[np.ndarray]
-            Predicted y values. If None, generates from x_values or extended range.
-
-        - save_path : Optional[str]
-            If provided, saves figure to this path.
-            Default: None (display only).
-
-        - figsize : Tuple[int, int]
-            Figure size in inches (width, height).
-            Default: (12, 8).
-
-        - title : Optional[str]
-            Plot title. If None, generates default title.
-            Default: None.
-
-        -------------------------------------------------------------------
-                                     RETURNS
-        -------------------------------------------------------------------
-        None
-            Displays or saves matplotlib figure.
-        """
-
-        # Generate predictions if not provided (uses extended range for smooth curve)
-        if x_values is None or y_predictions is None:
-            x_values, y_predictions = self.predict_extended(extend=0.5, n_points=300)
-
-        # Create figure and axes (FIXED: properly unpack figure and axes)
-        fig, ax = plt.subplots(figsize=figsize)
-
-        # Plot training data points (blue circles)
-        ax.scatter(
-            self.x_train,
-            self.y_train,
-            c="blue",
-            alpha=0.4,
-            s=30,
-            label="Train Data",
-            marker="o",
-        )
-
-        # Plot validation data points (orange squares)
-        ax.scatter(
-            self.x_val,
-            self.y_val,
-            c="orange",
-            alpha=0.5,
-            s=40,
-            label="Validation Data",
-            marker="s",
-        )
-
-        # Plot test data points (red triangles)
-        ax.scatter(
-            self.x_test,
-            self.y_test,
-            c="red",
-            alpha=0.6,
-            s=50,
-            label="Test Data",
-            marker="^",
-        )
-
-        # Plot model prediction curve (green line, drawn on top with zorder=5)
-        ax.plot(
-            x_values,
-            y_predictions,
-            "g-",
-            linewidth=2.5,
-            label="PINN Prediction",
-            zorder=5,
-        )
-
-        # Set axis labels using the symbolic variable names
-        ax.set_xlabel(str(self.x_sym), fontsize=12, fontweight="bold")
-        ax.set_ylabel(str(self.y_sym), fontsize=12, fontweight="bold")
-
-        # Set title (use default with solution name if available)
-        if title is None:
-            title = f"PINN Predictions vs. Data"
-            if self.solution_name:
-                title += f" ({self.solution_name})"
-        ax.set_title(title, fontsize=14, fontweight="bold")
-
-        # Add legend and grid
-        ax.legend(loc="best", fontsize=10)
-        ax.grid(True, alpha=0.3, linestyle="--")
-
-        # Add R² score annotation in top-left corner if available
-        if self.test_metrics and "test_r2" in self.test_metrics:
-            r2_text = f"Test R² = {self.test_metrics['test_r2']:.4f}"
-            ax.text(
-                0.02,
-                0.98,
-                r2_text,
-                transform=ax.transAxes,
-                fontsize=11,
-                verticalalignment="top",
-                bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
-            )
-
-        # Adjust layout to prevent label cutoff
-        plt.tight_layout()
-
-        # Save to file if path provided, otherwise display
-        if save_path:
-            plt.savefig(save_path, dpi=300, bbox_inches="tight")
-            logger.info(f"Plot saved to {save_path}")
-        else:
-            plt.show()
-
     # =========================================================================
-    # CSV EXPORT METHODS
-    # =========================================================================
-
-    def save_predictions_to_csv(
-        self,
-        filepath: str,
-        x_value_name: str,
-        y_value_name: str,
-        x_values: Optional[np.ndarray] = None,
-        y_predictions: Optional[np.ndarray] = None,
-        include_raw_data: bool = True,
-        include_test_metrics: bool = True,
-        additional_metadata: Optional[Dict[str, Any]] = None,
-    ) -> None:
-        """
-        Save model predictions and metadata to CSV file.
-
-        This method exports the model's predictions along with optional raw data,
-        test metrics, and learned constants for comparison with ATNF or other
-        reference data.
-
-        -------------------------------------------------------------------
-                                    PARAMETERS
-        -------------------------------------------------------------------
-        - filepath : str
-            Output CSV file path. Parent directories will be created if needed.
-
-        - x_values : Optional[np.ndarray]
-            X values for predictions. If None, uses extended prediction range.
-            Shape: (n_points,)
-
-        - y_predictions : Optional[np.ndarray]
-            Predicted y values. If None and x_values provided, generates predictions.
-            If both None, uses predict_extended(). Shape: (n_points,)
-
-        - include_raw_data : bool
-            If True, includes original data points in output.
-            Default: True.
-
-        - include_test_metrics : bool
-            If True, adds test metrics as part of data.
-            Default: True.
-
-        - additional_metadata : Optional[Dict[str, Any]]
-            Additional metadata to include in header comments.
-            Default: None.
-
-        -------------------------------------------------------------------
-                                     RETURNS
-        -------------------------------------------------------------------
-
-        - Writes CSV file to specified filepath.
-
-        -------------------------------------------------------------------
-                                      NOTES
-        -------------------------------------------------------------------
-
-        CSV Structure:
-        - Header comments (lines starting with #) contain metadata
-        - First data section: Model predictions
-        - Second section: Original train/val/test data if true
-        """
-
-        # Create output directory if needed
-        filepath_obj = Path(filepath)
-        filepath_obj.parent.mkdir(parents=True, exist_ok=True)
-
-        # Generate predictions if not provided
-        if x_values is None or y_predictions is None:
-            logger.info("Generating extended predictions for CSV export")
-            x_values, y_predictions = self.predict_extended(extend=0.5, n_points=300)
-        elif x_values is not None and y_predictions is None:
-            # If user provided x but not y, generate predictions
-            self.model.eval()
-            with torch.no_grad():
-                x_torch = self._numpy_array_to_tensor(x_values)
-                y_torch = self.model(x_torch)
-                y_predictions = y_torch.numpy().flatten()
-
-        # Prepare metadata for exporting
-        metadata_lines = self._generate_metadata_lines(
-            include_test_metrics, additional_metadata
-        )
-
-        predictions_df = pd.DataFrame(
-            {
-                x_value_name: x_values,
-                f"{y_value_name}_predicted": y_predictions,
-                "data_type": "model_prediction",
-            }
-        )
-
-        if self.solution_name:
-            predictions_df["solution_name"] = self.solution_name
-
-        # Add raw data if requested
-        if include_raw_data:
-            raw_data_df = self._build_raw_data_dataframe(x_value_name, y_value_name)
-            combined_df = pd.concat([predictions_df, raw_data_df], ignore_index=True)
-        else:
-            combined_df = predictions_df
-
-        # Write to CSV
-        with open(filepath, "w", encoding="utf-8") as f:
-            # Write metadata as comments
-            for line in metadata_lines:
-                f.write(f"# {line}\n")
-            f.write("#\n")
-
-            # Write data
-            combined_df.to_csv(f, index=False)
-
-        logger.info(f"Predictions saved to {filepath}")
-        logger.info(f"  - Model predictions: {len(predictions_df)} points")
-        if include_raw_data:
-            logger.info(f"  - Raw data points: {len(raw_data_df)} points")
-
-    def _generate_metadata_lines(
-        self, include_test_metrics: bool, additional_metadata: Optional[Dict[str, Any]]
-    ) -> List[str]:
-        """Generate metadata header lines for CSV output."""
-        lines = []
-
-        lines.append("=" * 70)
-        lines.append("PHYSICS-INFORMED NEURAL NETWORK PREDICTIONS")
-        lines.append("=" * 70)
-
-        # Solution identification
-        if self.solution_name:
-            lines.append(f"Solution Name: {self.solution_name}")
-
-        lines.append(f"Model: {self.__class__.__name__}")
-        lines.append(f"Input Variable: {self.x_sym}")
-        lines.append(f"Output Variable: {self.y_sym}")
-        lines.append(f"Differential Equation: {self.differential_eq}")
-
-        # Architecture
-        lines.append(f"Network Architecture: 1 → {self.hidden_layers} → 1")
-        lines.append(
-            f"Total Parameters: {sum(p.numel() for p in self.model.parameters())}"
-        )
-
-        # Data splits
-        lines.append("")
-        lines.append("Data Splits:")
-        lines.append(f"  Train: {len(self.x_train)} samples ({self.train_split:.1%})")
-        lines.append(f"  Validation: {len(self.x_val)} samples ({self.val_split:.1%})")
-        lines.append(f"  Test: {len(self.x_test)} samples ({self.test_split:.1%})")
-
-        # Learned constants
-        lines.append("")
-        lines.append("Learned Physical Constants:")
-        for name, param in self.learnable_params.items():
-            lines.append(f"  {name} = {param.item():.8f}")
-
-        # Test metrics
-        if include_test_metrics and self.test_metrics:
-            lines.append("")
-            lines.append("Test Set Performance:")
-            lines.append(
-                f"  R² Score: {self.test_metrics.get('test_r2', float('nan')):.6f}"
-            )
-            lines.append(
-                f"  RMSE: {self.test_metrics.get('test_rmse', float('nan')):.6e}"
-            )
-            lines.append(
-                f"  MAE: {self.test_metrics.get('test_mae', float('nan')):.6e}"
-            )
-            lines.append(
-                f"  Reduced χ²: {self.test_metrics.get('test_chi2_reduced', float('nan')):.6f}"
-            )
-
-        # Additional metadata
-        if additional_metadata:
-            lines.append("")
-            lines.append("Additional Metadata:")
-            for key, value in additional_metadata.items():
-                lines.append(f"  {key}: {value}")
-
-        lines.append("=" * 70)
-
-        return lines
-
-    def _build_raw_data_dataframe(self, x_name: str, y_name: str) -> pd.DataFrame:
-        """Build DataFrame containing original raw data with split labels."""
-
-        # List to hold all data rows (each row is a dictionary)
-        data_rows = []
-
-        # Add all training data points with "raw_train" label
-        for i in range(len(self.x_train)):
-            data_rows.append(
-                {
-                    x_name: self.x_train[i],  # Input variable value
-                    f"{y_name}_predicted": self.y_train[
-                        i
-                    ],  # True output value (not predicted!)
-                    "data_type": "raw_train",  # Label as training data
-                }
-            )
-
-        # Add all validation data points with "raw_validation" label
-        for i in range(len(self.x_val)):
-            data_rows.append(
-                {
-                    x_name: self.x_val[i],  # Input variable value
-                    f"{y_name}_predicted": self.y_val[i],  # True output value
-                    "data_type": "raw_validation",  # Label as validation data
-                }
-            )
-
-        # Add all test data points with "raw_test" label
-        for i in range(len(self.x_test)):
-            data_rows.append(
-                {
-                    x_name: self.x_test[i],  # Input variable value
-                    f"{y_name}_predicted": self.y_test[i],  # True output value
-                    "data_type": "raw_test",  # Label as test data
-                }
-            )
-
-        # Convert list of dictionaries to pandas DataFrame
-        raw_data_df = pd.DataFrame(data_rows)
-
-        # Add solution name column if one was provided (for tracking different experiments)
-        if self.solution_name:
-            raw_data_df["solution_name"] = self.solution_name
-
-        return raw_data_df
-
-    # =========================================================================
-    # UTILITY METHODS
+    # OTHER UTILITY METHODS
     # =========================================================================
 
     def store_learned_constants(self) -> Dict[str, float]:
