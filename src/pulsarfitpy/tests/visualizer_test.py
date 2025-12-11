@@ -88,8 +88,7 @@ pinn = PulsarPINN(
     train_split=0.70,
     val_split=0.15,
     test_split=0.15,
-    random_seed=42,
-    solution_name="Magnetic Field PINN Model"
+    random_seed=42
 )
 
 # =============================================================================

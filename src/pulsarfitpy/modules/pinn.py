@@ -410,6 +410,12 @@ class PulsarPINN:
                     f"Val={val_loss['total']:.6e} | {learned_constants}"
                 )
 
+                # Print all losses at the current epoch
+                logger.info(f"Epoch {epoch:5d} Losses:")
+                logger.info(f"  Total Loss: {train_loss['total']:.6e}")
+                logger.info(f"  Physics Loss: {train_loss['physics']:.6e}")
+                logger.info(f"  Data Loss: {train_loss['data']:.6e}")
+
         # Print final learned constants after PINN training is done
         print("LEARNED CONSTANTS: ")
         for name, param in self.learnable_params.items():
@@ -753,20 +759,23 @@ class PulsarPINN:
                 print(f"  Bootstrap iteration {i + 1}/{n_bootstrap}...")
 
             # Randomly sample training data with replacement
-            n_samples = int(len(self.train_data[0]) * sample_fraction)
-            indices = np.random.choice(len(self.train_data[0]), size=n_samples, replace=True)
+            # Calculate the number of samples for bootstrap resampling
+            n_samples = int(len(self.x_train) * sample_fraction)
+            indices = np.random.choice(len(self.x_train), size=n_samples, replace=True)
 
             # Create bootstrap sample
-            boot_x = self.train_data[0][indices]
-            boot_y = self.train_data[1][indices]
+            boot_x = self.x_train[indices]
+            boot_y = self.y_train[indices]
 
-            # Reinitialize model with same architecture
-            self._initialize_network()
-            self._initialize_learnable_params()
+            # Convert bootstrap samples to tensors
+            boot_x_torch = self._numpy_array_to_tensor(boot_x)
+            boot_y_torch = self._numpy_array_to_tensor(boot_y)
 
-            # Temporarily replace training data
-            original_train_data = self.train_data
-            self.train_data = (boot_x, boot_y)
+            # Temporarily replace training data with bootstrap sample
+            original_x_train_torch = self.x_train_torch
+            original_y_train_torch = self.y_train_torch
+            self.x_train_torch = boot_x_torch
+            self.y_train_torch = boot_y_torch
 
             # Train on bootstrap sample (suppress training output)
             self.train(epochs=epochs, training_reports=epochs + 1, physics_weight=1.0, data_weight=1.0)
@@ -777,7 +786,8 @@ class PulsarPINN:
                 bootstrap_constants[name].append(value)
 
             # Restore original training data
-            self.train_data = original_train_data
+            self.x_train_torch = original_x_train_torch
+            self.y_train_torch = original_y_train_torch
 
         # Restore original model state
         self.model.load_state_dict(original_model_state)
@@ -882,27 +892,25 @@ class PulsarPINN:
         mc_constants = {name: [] for name in self.learnable_params.keys()}
 
         # Get data standard deviations for noise scaling
-        x_std = self.train_data[0].std()
-        y_std = self.train_data[1].std()
+        x_std = self.x_train_torch.std()
+        y_std = self.y_train_torch.std()
 
         for i in range(n_simulations):
             if verbose and (i + 1) % max(1, n_simulations // 10) == 0:
                 print(f"  Simulation {i + 1}/{n_simulations}...")
 
             # Add Gaussian noise to data
-            x_noise = torch.randn_like(self.train_data[0]) * (noise_level * x_std)
-            y_noise = torch.randn_like(self.train_data[1]) * (noise_level * y_std)
+            x_noise = torch.randn_like(self.x_train_torch) * (noise_level * x_std)
+            y_noise = torch.randn_like(self.y_train_torch) * (noise_level * y_std)
 
-            perturbed_x = self.train_data[0] + x_noise
-            perturbed_y = self.train_data[1] + y_noise
+            perturbed_x = self.x_train_torch + x_noise
+            perturbed_y = self.y_train_torch + y_noise
 
-            # Reinitialize and train on perturbed data
-            self._initialize_network()
-            self._initialize_learnable_params()
-
-            # Temporarily replace training data
-            original_train_data = self.train_data
-            self.train_data = (perturbed_x, perturbed_y)
+            # Temporarily replace training data with perturbed data
+            original_x_train = self.x_train_torch
+            original_y_train = self.y_train_torch
+            self.x_train_torch = perturbed_x
+            self.y_train_torch = perturbed_y
 
             # Quick training (fewer epochs than bootstrap)
             self.train(epochs=500, training_reports=501, physics_weight=1.0, data_weight=1.0)
@@ -913,7 +921,8 @@ class PulsarPINN:
                 mc_constants[name].append(value)
 
             # Restore original training data
-            self.train_data = original_train_data
+            self.x_train_torch = original_x_train
+            self.y_train_torch = original_y_train
 
         # Restore original model state
         self.model.load_state_dict(original_model_state)
@@ -1065,16 +1074,12 @@ class PulsarPINN:
                 print(f"  Permutation {i + 1}/{n_permutations}...")
 
             # Randomly shuffle target labels (breaks real relationships)
-            permuted_indices = np.random.permutation(len(self.train_data[1]))
-            permuted_y_train = self.train_data[1][permuted_indices]
-
-            # Reinitialize model
-            self._initialize_network()
-            self._initialize_learnable_params()
+            permuted_indices = np.random.permutation(len(self.y_train_torch))
+            permuted_y_train = self.y_train_torch[permuted_indices]
 
             # Temporarily replace training data with permuted labels
-            original_train_data = self.train_data
-            self.train_data = (self.train_data[0], permuted_y_train)
+            original_y_train = self.y_train_torch
+            self.y_train_torch = permuted_y_train
 
             # Train on permuted data (suppress output)
             self.train(epochs=epochs, training_reports=epochs + 1, physics_weight=1.0, data_weight=1.0)
@@ -1084,7 +1089,7 @@ class PulsarPINN:
             permuted_r2_values.append(test_metrics.get('test_r2', 0.0))
 
             # Restore original training data
-            self.train_data = original_train_data
+            self.y_train_torch = original_y_train
 
         # Restore original model state
         self.model.load_state_dict(original_model_state)
@@ -1194,16 +1199,12 @@ class PulsarPINN:
                 print(f"  Shuffle {i + 1}/{n_shuffles}...")
 
             # Randomly shuffle input features (breaks x-y relationship)
-            shuffled_indices = np.random.permutation(len(self.train_data[0]))
-            shuffled_x_train = self.train_data[0][shuffled_indices]
-
-            # Reinitialize model
-            self._initialize_network()
-            self._initialize_learnable_params()
+            shuffled_indices = np.random.permutation(len(self.x_train_torch))
+            shuffled_x_train = self.x_train_torch[shuffled_indices]
 
             # Temporarily replace training data with shuffled features
-            original_train_data = self.train_data
-            self.train_data = (shuffled_x_train, self.train_data[1])
+            original_x_train = self.x_train_torch
+            self.x_train_torch = shuffled_x_train
 
             # Train on shuffled data
             self.train(epochs=epochs, training_reports=epochs + 1, physics_weight=1.0, data_weight=1.0)
@@ -1213,7 +1214,7 @@ class PulsarPINN:
             shuffled_r2_values.append(test_metrics.get('test_r2', 0.0))
 
             # Restore original training data
-            self.train_data = original_train_data
+            self.x_train_torch = original_x_train
 
         # Restore original model state
         self.model.load_state_dict(original_model_state)
@@ -1303,23 +1304,24 @@ class PulsarPINN:
         if not self.test_metrics:
             self.evaluate_test_set(verbose=False)
         real_r2 = self.test_metrics.get('test_r2', 0.0)
-        real_loss = self.test_metrics.get('test_loss', float('inf'))
+        real_loss = self.test_metrics.get('test_loss_total', float('inf'))
 
         if verbose:
             print(f"Real physics model R²: {real_r2:.6f}")
             print(f"Real physics loss:     {real_loss:.6e}")
             print("\nTesting with inverted physics (swapped inputs/outputs)...")
 
-        # Swap x and y data (physically meaningless)
-        self._initialize_network()
-        self._initialize_learnable_params()
-
-        original_train_data = self.train_data
-        original_test_data = self.test_data
+        # Swap training and test data (physically meaningless)
+        original_x_train = self.x_train_torch
+        original_y_train = self.y_train_torch
+        original_x_test = self.x_test_torch
+        original_y_test = self.y_test_torch
 
         # Swap training data roles
-        self.train_data = (self.train_data[1], self.train_data[0])
-        self.test_data = (self.test_data[1], self.test_data[0])
+        self.x_train_torch = original_y_train
+        self.y_train_torch = original_x_train
+        self.x_test_torch = original_y_test
+        self.y_test_torch = original_x_test
 
         # Train on impossible physics
         self.train(epochs=epochs, training_reports=epochs + 1, physics_weight=1.0, data_weight=1.0)
@@ -1327,11 +1329,13 @@ class PulsarPINN:
         # Evaluate impossible model
         impossible_metrics = self.evaluate_test_set(verbose=False)
         impossible_r2 = impossible_metrics.get('test_r2', 0.0)
-        impossible_loss = impossible_metrics.get('test_loss', float('inf'))
+        impossible_loss = impossible_metrics.get('test_loss_total', float('inf'))
 
         # Restore original data and model
-        self.train_data = original_train_data
-        self.test_data = original_test_data
+        self.x_train_torch = original_x_train
+        self.y_train_torch = original_y_train
+        self.x_test_torch = original_x_test
+        self.y_test_torch = original_y_test
         self.model.load_state_dict(original_model_state)
         self.set_learn_constants(original_constants)
 
