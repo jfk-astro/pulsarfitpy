@@ -7,6 +7,13 @@ title: Examples
 
 TODO!
 
+<!-- Below, we sample a scientifically accepted formula cited by [Belvedere](https://iopscience.iop.org/article/10.1088/0004-637X/799/1/23) and many other studies regarding the surface magnetic field $B$, period $P$, and period derivative $\dot P$, as shown here:
+
+| $\large B \approx 3.2 \cdot 10^{19} (P \dot P)^{1/2}$ |
+|:-:|
+
+In this markdown file, experimentally determine an approximation for $3.2 \cdot 10^{19}$ through the variable $N$ using pulsarfitpy & ATNF data, and how to use its constant finder feature in a real theoretical system for a one-dimensional pulsar equation. -->
+
 ## Basic Usage
 
 ### Python Library
@@ -62,3 +69,11 @@ python src/pulsarfitpy/src/pulsarfitpy/gui.py
 | `DM` | Dispersion measure (pc/cm³) |
 | `BSURF` | Surface magnetic field (G) |
 | `EDOT` | Spin-down energy loss rate (erg/s) |
+
+## **Next Steps**
+
+- Explore [Examples](examples.md)
+- Read the [API Reference](api.md)
+- Check out the Jupyter notebooks in `src/pulsarfitpy/docs/`
+
+[← Back to Home](index.md)

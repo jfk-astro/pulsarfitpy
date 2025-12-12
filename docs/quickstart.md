@@ -1,22 +1,9 @@
 ---
 layout: default
-title: Quick Start
+title: pulsarfitpy
 ---
 
-# **Quick Start Tutorial**
-
-TODO!
-
-## **Implementing 1D Physics Informed Neural Networks (PINNs) with pulsarfitpy**
-
-pulsarfitpy offers an intuitive PyTorch framework using [Physics Informed Neural Networks (PINNs)](https://arxiv.org/abs/1711.10561) to analyze differential equations in comparison to observed ATNF data. The application of the PINN framework provides an additional resource testing the validity of many derived theoretical physics expressions in pulsar analysis. 
-
-<!-- Below, we sample a scientifically accepted formula cited by [Belvedere](https://iopscience.iop.org/article/10.1088/0004-637X/799/1/23) and many other studies regarding the surface magnetic field $B$, period $P$, and period derivative $\dot P$, as shown here:
-
-| $\large B \approx 3.2 \cdot 10^{19} (P \dot P)^{1/2}$ |
-|:-:|
-
-In this markdown file, experimentally determine an approximation for $3.2 \cdot 10^{19}$ through the variable $N$ using pulsarfitpy & ATNF data, and how to use its constant finder feature in a real theoretical system for a one-dimensional pulsar equation. -->
+# **pulsarfitpy Technical Information**
 
 ## **Understanding the PulsarPINN Class**
 
