@@ -1121,7 +1121,7 @@ class PulsarPINN:
             print(f"\nReal model Rsquared:           {real_r2:.6f}")
             print(f"Permuted models Rsquared mean: {permuted_mean:.6f} plus minus {permuted_std:.6f}")
             print(f"p-value:                 {p_value:.4f}")
-            print(f"\nSignificance test (α = {significance_level}):")
+            print(f"\nSignificance test (alpha = {significance_level}):")
             if is_significant:
                 print("   PASSED: Real model significantly better than random")
                 print("     Model learns genuine physical relationships")
