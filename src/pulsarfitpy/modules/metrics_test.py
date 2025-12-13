@@ -5,18 +5,18 @@ This script demonstrates the application of PINNs to learn the braking index
 from pulsar rotational evolution using the spindown power law.
 
 Physical Model (Goldreich & Julian 1969; Manchester & Taylor 1977):
-    Ṗ ∝ P^(n-1)
+    PDOT ∝ P^(n-1)
     
 Or equivalently:
-    log(Ṗ) = (n-1) * log(P) + log(K)
+    log(PDOT) = (n-1) * log(P) + log(K)
     
 Where:
     - P: Rotation period (seconds)
-    - Ṗ: Period derivative (s/s)
+    - PDOT: Period derivative (s/s)
     - n: Braking index (dimensionless, theoretically n=3 for magnetic dipole)
     - K: Spindown constant (depends on B, R, I)
 
-The PINN will learn the braking index 'n' from observed P-Ṗ correlations.
+The PINN will learn the braking index 'n' from observed P-PDOT correlations.
 
 Physical Context:
     - n = 3: Pure magnetic dipole braking (canonical model)
@@ -37,11 +37,6 @@ Date: December 2025
 import numpy as np
 import sympy as sp
 import matplotlib.pyplot as plt
-import sys
-from pathlib import Path
-
-# Add modules directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'modules'))
 from pinn import PulsarPINN
 
 # =============================================================================
@@ -95,7 +90,7 @@ n_braking = sp.Symbol('n_braking')  # Braking index to learn
 logK = sp.Symbol('logK')  # Spindown constant to learn
 
 # Spindown power law in logarithmic form
-# log(Ṗ) = (n-1) * log(P) + log(K)
+# log(PDOT) = (n-1) * log(P) + log(K)
 differential_equation = sp.Eq(logPdot, (n_braking - 1) * logP + logK)
 
 print("Differential Equation (Spindown Power Law):")
@@ -138,7 +133,7 @@ pinn = PulsarPINN(
     random_seed=42
 )
 
-print("  Network Architecture: 1 → [64, 32] → 1")
+print("  Network Architecture: 1  w/ [64, 32]  w/ 1")
 print("  Initial guesses:")
 print("    n_braking = 2.5 (optimized initialization)")
 print("    logK = -16.0")
@@ -194,13 +189,13 @@ print(f"  Error:         Δlog(K) = {abs(learned_logK - TRUE_logK):.6f}")
 
 print("\nPHYSICAL INTERPRETATION:")
 if learned_n < 2.5:
-    print("  ⚠ Very low braking index suggests strong additional braking")
+    print("   Very low braking index suggests strong additional braking")
     print("    mechanisms beyond magnetic dipole radiation (e.g., particle wind)")
 elif 2.5 <= learned_n < 3.5:
-    print("  ✓ Braking index consistent with magnetic dipole braking")
+    print("    Braking index consistent with magnetic dipole braking")
     print("    with possible minor deviations")
 elif learned_n >= 3.5:
-    print("  ⚠ High braking index suggests complex magnetic field evolution")
+    print("   High braking index suggests complex magnetic field evolution")
     print("    or measurement systematics")
 print()
 
@@ -390,7 +385,7 @@ ax7.grid(True, alpha=0.3, axis='y')
 
 # Add checkmarks/crosses
 for i, (bar, result) in enumerate(zip(bars, test_results)):
-    symbol = '✓' if result else '✗'
+    symbol = ' ' if result else '✗'
     ax7.text(bar.get_x() + bar.get_width()/2, 0.5, symbol, 
              ha='center', va='center', fontsize=30, fontweight='bold',
              color='white')
@@ -442,32 +437,32 @@ print(f"   log(K) = {learned_logK:.4f} ± {uncertainties['logK']['std']:.4f}")
 print(f"   95% CI: [{uncertainties['logK']['ci_lower']:.4f}, {uncertainties['logK']['ci_upper']:.4f}]")
 
 print("\n4. ROBUSTNESS VALIDATION RESULTS:")
-perm_pass = '✓ PASS' if robustness_results['permutation_test']['is_significant'] else '✗ FAIL'
-feat_pass = '✓ PASS' if robustness_results['feature_shuffling_test']['r2_difference'] > 0.1 else '✗ FAIL'
-phys_pass = '✓ PASS' if robustness_results['impossible_physics_test']['real_much_better'] else '✗ FAIL'
+perm_pass = '  PASS' if robustness_results['permutation_test']['is_significant'] else '✗ FAIL'
+feat_pass = '  PASS' if robustness_results['feature_shuffling_test']['r2_difference'] > 0.1 else '✗ FAIL'
+phys_pass = '  PASS' if robustness_results['impossible_physics_test']['real_much_better'] else '✗ FAIL'
 
 print(f"   Permutation Test:    {perm_pass} (p = {robustness_results['permutation_test']['p_value']:.4f})")
 print(f"   Feature Shuffling:   {feat_pass} (ΔR² = {robustness_results['feature_shuffling_test']['r2_difference']:.4f})")
 print(f"   Impossible Physics:  {phys_pass} (ΔR² = {robustness_results['impossible_physics_test']['r2_difference']:.4f})")
-print(f"   Overall Assessment:  {'RELIABLE ✓✓✓' if robustness_results['all_tests_passed'] else 'NEEDS REVIEW ⚠'}")
+print(f"   Overall Assessment:  {'RELIABLE    ' if robustness_results['all_tests_passed'] else 'NEEDS REVIEW ⚠'}")
 
 print("\n5. PHYSICAL INTERPRETATION:")
 n_error = abs(learned_n - TRUE_n)
 if n_error < 0.1:
-    print("   ✓ EXCELLENT: Braking index recovered within 3.6% of true value")
+    print("     EXCELLENT: Braking index recovered within 3.6% of true value")
 elif n_error < 0.3:
-    print("   ✓ GOOD: Braking index recovered within 10.7% of true value")
+    print("     GOOD: Braking index recovered within 10.7% of true value")
 else:
-    print("   ⚠ MODERATE: Braking index shows larger deviation from true value")
+    print("    MODERATE: Braking index shows larger deviation from true value")
 
 print(f"\n   Comparison to canonical dipole (n=3):")
 print(f"   Deviation from dipole: Δn = {abs(learned_n - 3.0):.3f}")
 if abs(learned_n - 3.0) < 0.2:
-    print("   → Consistent with pure magnetic dipole braking")
+    print("    Consistent with pure magnetic dipole braking")
 elif learned_n < 3.0:
-    print("   → Suggests additional energy loss mechanisms (e.g., particle wind)")
+    print("    Suggests additional energy loss mechanisms (e.g., particle wind)")
 else:
-    print("   → May indicate magnetic field decay or complex field geometry")
+    print("    May indicate magnetic field decay or complex field geometry")
 
 print("\n6. SCIENTIFIC CONCLUSION:")
 if n_error < 0.2 and robustness_results['all_tests_passed']:
