@@ -95,7 +95,7 @@ class PulsarPINN:
         'val_total', 'val_physics', 'val_data'.
 
     - test_metrics : Dict[str, float]
-        Evaluation metrics including R², RMSE, MAE, reduced χ².
+        Evaluation metrics including Rsquared, RMSE, MAE, reduced chi squared (x^2).
     """
 
     def __init__(
@@ -278,7 +278,7 @@ class PulsarPINN:
             self.learnable_params.values()
         )
         self.optimizer = torch.optim.Adam(all_params, lr=1e-3)
-        logger.info(f"Network architecture: {self.input_layer} → {self.hidden_layers} → {self.output_layer}")
+        logger.info(f"Network architecture: {self.input_layer}    {self.hidden_layers}    {self.output_layer}")
 
     def _create_physics_residual(self):
         """Convert symbolic differential equation to callable residual function."""
@@ -537,7 +537,7 @@ class PulsarPINN:
         loss_data = torch.mean((predicted_y - y_true) ** 2)
         loss_total = loss_physics + loss_data
 
-        # R² score
+        # Rsquared score
         y_mean = torch.mean(y_true)
         total_variance = torch.sum((y_true - y_mean) ** 2)
         residual_variance = torch.sum((y_true - predicted_y) ** 2)
@@ -547,7 +547,7 @@ class PulsarPINN:
         rmse = torch.sqrt(torch.mean((predicted_y - y_true) ** 2))
         mae = torch.mean(torch.abs(predicted_y - y_true))
 
-        # Reduced χ²
+        # Reduced chi square
         n_samples = len(y_true)
         n_params = sum(p.numel() for p in self.model.parameters()) + len(
             self.learnable_params
@@ -591,28 +591,28 @@ class PulsarPINN:
             print(
                 f"  Loss (Data):       {self.test_metrics[f'{split_name}_loss_data']:.6e}"
             )
-            print(f"  R² Score:          {self.test_metrics[f'{split_name}_r2']:.6f}")
+            print(f"  Rsquared Score:          {self.test_metrics[f'{split_name}_r2']:.6f}")
             print(f"  RMSE:              {self.test_metrics[f'{split_name}_rmse']:.6e}")
             print(f"  MAE:               {self.test_metrics[f'{split_name}_mae']:.6e}")
 
             # Only print reduced chi-squared for test set
             if split_name == "test":
                 print(
-                    f"  Reduced χ²:        {self.test_metrics[f'{split_name}_chi2_reduced']:.6f}"
+                    f"  Reduced chi squared:        {self.test_metrics[f'{split_name}_chi2_reduced']:.6f}"
                 )
 
-        # Calculate difference between training and test R² scores
+        # Calculate difference between training and test Rsquared scores
         train_test_r2_difference = (
             self.test_metrics["train_r2"] - self.test_metrics["test_r2"]
         )
 
-        # If train R² is much higher than test R², model likely overfitted (memorized training data)
+        # If train Rsquared is much higher than test Rsquared, model likely overfitted (memorized training data)
         if train_test_r2_difference > 0.1:
             print(f" WARNING: Possible overfitting detected.")
-            print(f"  Train R² - Test R² = {train_test_r2_difference:.4f}")
+            print(f"  Train Rsquared - Test Rsquared = {train_test_r2_difference:.4f}")
         else:
             # Small difference means model generalizes well to new data
-            print(f"Good generalization: ΔR² = {train_test_r2_difference:.4f}")
+            print(f"Good generalization: ΔRsquared = {train_test_r2_difference:.4f}")
 
         print("=" * 70)
 
@@ -733,7 +733,7 @@ class PulsarPINN:
         -------------------------------------------------------------------
         >>> pinn.train(epochs=5000)
         >>> uncertainties = pinn.bootstrap_uncertainty(n_bootstrap=100)
-        >>> print(f"logR = {uncertainties['logR']['mean']:.3f} ± {uncertainties['logR']['std']:.3f}")
+        >>> print(f"logR = {uncertainties['logR']['mean']:.3f} plus minus {uncertainties['logR']['std']:.3f}")
         >>> print(f"95% CI: [{uncertainties['logR']['ci_lower']:.3f}, {uncertainties['logR']['ci_upper']:.3f}]")
         """
         if verbose:
@@ -873,7 +873,7 @@ class PulsarPINN:
         -------------------------------------------------------------------
         >>> pinn.train(epochs=5000)
         >>> uncertainties = pinn.monte_carlo_uncertainty(n_simulations=1000)
-        >>> print(f"logR = {uncertainties['logR']['mean']:.3f} ± {uncertainties['logR']['std']:.3f}")
+        >>> print(f"logR = {uncertainties['logR']['mean']:.3f} plus minus {uncertainties['logR']['std']:.3f}")
         """
         if verbose:
             print("=" * 70)
@@ -1026,10 +1026,10 @@ class PulsarPINN:
         - Dict[str, any]
             Dictionary containing:
             {
-                'real_r2': R² from actual trained model,
-                'permuted_r2_mean': Mean R² from permuted models,
-                'permuted_r2_std': Std dev of permuted R² values,
-                'permuted_r2_values': List of all permuted R² scores,
+                'real_r2': R squared from actual trained model,
+                'permuted_r2_mean': Mean R squared from permuted models,
+                'permuted_r2_std': Std dev of permuted R values,
+                'permuted_r2_values': List of all permuted Rsquared scores,
                 'p_value': Fraction of permuted models >= real model,
                 'is_significant': Whether real model significantly better,
                 'significance_level': Threshold used
@@ -1063,7 +1063,7 @@ class PulsarPINN:
         real_r2 = self.test_metrics.get('test_r2', 0.0)
 
         if verbose:
-            print(f"Real model R²: {real_r2:.6f}")
+            print(f"Real model Rsquared: {real_r2:.6f}")
             print("\nRunning permutation tests...")
 
         # Storage for permuted results
@@ -1118,16 +1118,16 @@ class PulsarPINN:
             print("\n" + "=" * 70)
             print("PERMUTATION TEST RESULTS")
             print("=" * 70)
-            print(f"\nReal model R²:           {real_r2:.6f}")
-            print(f"Permuted models R² mean: {permuted_mean:.6f} ± {permuted_std:.6f}")
+            print(f"\nReal model Rsquared:           {real_r2:.6f}")
+            print(f"Permuted models Rsquared mean: {permuted_mean:.6f} plus minus {permuted_std:.6f}")
             print(f"p-value:                 {p_value:.4f}")
             print(f"\nSignificance test (α = {significance_level}):")
             if is_significant:
-                print("  ✓ PASSED: Real model significantly better than random")
-                print("  → Model learns genuine physical relationships")
+                print("   PASSED: Real model significantly better than random")
+                print("     Model learns genuine physical relationships")
             else:
-                print("  ✗ FAILED: Real model not significantly better than random")
-                print("  → WARNING: Model may be capturing spurious correlations")
+                print("    FAILED: Real model not significantly better than random")
+                print("     WARNING: Model may be capturing spurious correlations")
             print("=" * 70)
 
         return results
@@ -1161,7 +1161,7 @@ class PulsarPINN:
                                      RETURNS
         -------------------------------------------------------------------
         - Dict[str, any]
-            Dictionary with validation results including R² comparisons.
+            Dictionary with validation results including Rsquared comparisons.
 
         -------------------------------------------------------------------
                                       EXAMPLE
@@ -1188,7 +1188,7 @@ class PulsarPINN:
         real_r2 = self.test_metrics.get('test_r2', 0.0)
 
         if verbose:
-            print(f"Real model R²: {real_r2:.6f}")
+            print(f"Real model Rsquared: {real_r2:.6f}")
             print("\nRunning feature shuffling tests...")
 
         # Storage for shuffled results
@@ -1239,17 +1239,17 @@ class PulsarPINN:
             print("\n" + "=" * 70)
             print("FEATURE SHUFFLING TEST RESULTS")
             print("=" * 70)
-            print(f"\nReal model R²:           {real_r2:.6f}")
-            print(f"Shuffled models R² mean: {shuffled_mean:.6f} ± {shuffled_std:.6f}")
+            print(f"\nReal model Rsquared:           {real_r2:.6f}")
+            print(f"Shuffled models Rsquared mean: {shuffled_mean:.6f} plus minus {shuffled_std:.6f}")
             print(f"Improvement:             {r2_difference:.6f}")
             print(f"Factor improvement:      {results['improvement_factor']:.2f}x")
             
             if r2_difference > 0.1:
-                print("\n  ✓ PASSED: Real features significantly better than shuffled")
-                print("  → Input features contain genuine information")
+                print("\n   PASSED: Real features significantly better than shuffled")
+                print("     Input features contain genuine information")
             else:
-                print("\n  ✗ WARNING: Real features not much better than shuffled")
-                print("  → Features may not contain meaningful signal")
+                print("\n   WARNING: Real features not much better than shuffled")
+                print("     Features may not contain meaningful signal")
             print("=" * 70)
 
         return results
@@ -1307,7 +1307,7 @@ class PulsarPINN:
         real_loss = self.test_metrics.get('test_loss_total', float('inf'))
 
         if verbose:
-            print(f"Real physics model R²: {real_r2:.6f}")
+            print(f"Real physics model Rsquared: {real_r2:.6f}")
             print(f"Real physics loss:     {real_loss:.6e}")
             print("\nTesting with inverted physics (swapped inputs/outputs)...")
 
@@ -1357,19 +1357,19 @@ class PulsarPINN:
             print("IMPOSSIBLE PHYSICS TEST RESULTS")
             print("=" * 70)
             print(f"\nReal physics model:")
-            print(f"  R²:   {real_r2:.6f}")
+            print(f"  Rsquared:   {real_r2:.6f}")
             print(f"  Loss: {real_loss:.6e}")
             print(f"\nImpossible physics model (swapped variables):")
-            print(f"  R²:   {impossible_r2:.6f}")
+            print(f"  Rsquared:   {impossible_r2:.6f}")
             print(f"  Loss: {impossible_loss:.6e}")
             print(f"\nDifference: {r2_difference:.6f}")
             
             if real_much_better:
-                print("\n  ✓ PASSED: Real physics significantly better than impossible")
-                print("  → Model respects physical constraints")
+                print("\n   PASSED: Real physics significantly better than impossible")
+                print("     Model respects physical constraints")
             else:
-                print("\n  ✗ WARNING: Real physics not much better than impossible")
-                print("  → Model may not be learning genuine physics")
+                print("\n    WARNING: Real physics not much better than impossible")
+                print("     Model may not be learning genuine physics")
             print("=" * 70)
 
         return results
@@ -1460,9 +1460,9 @@ class PulsarPINN:
             print("\n" + "=" * 70)
             print("OVERALL ROBUSTNESS ASSESSMENT")
             print("=" * 70)
-            print(f"\nPermutation test:      {'✓ PASS' if permutation_results['is_significant'] else '✗ FAIL'}")
-            print(f"Feature shuffling:     {'✓ PASS' if feature_results['r2_difference'] > 0.1 else '✗ FAIL'}")
-            print(f"Impossible physics:    {'✓ PASS' if physics_results['real_much_better'] else '✗ FAIL'}")
+            print(f"\nPermutation test:      {' PASS' if permutation_results['is_significant'] else '  FAIL'}")
+            print(f"Feature shuffling:     {' PASS' if feature_results['r2_difference'] > 0.1 else '  FAIL'}")
+            print(f"Impossible physics:    {' PASS' if physics_results['real_much_better'] else '  FAIL'}")
             print(f"\n{'='*70}")
             if all_tests_passed:
                 print("VERDICT: Model demonstrates robust learning of genuine physics")
