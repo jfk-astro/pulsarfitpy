@@ -5,12 +5,9 @@ sympy
 typing
 logging
 matplotlib
-enum
-warnings
-sklearn
+argparse
+scikit-learn
 deepxde
-abc
 dataclasses
-time
 pathlib
 pandas

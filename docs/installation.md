@@ -12,6 +12,7 @@ title: pulsarfitpy
 
 ## **Dependencies**
 
+To use all features of pulsarfitpy install the following Python modules.  
 * psrqpy
 * numpy
 * torch
@@ -19,13 +20,10 @@ title: pulsarfitpy
 * typing
 * logging
 * matplotlib
-* enum
-* warnings
-* sklearn
+* argparse
+* scikit-learn
 * deepxde
-* abc
 * dataclasses
-* time
 * pathlib
 * pandas
 
@@ -34,7 +32,7 @@ You may install these by running either one of the following commands:
 pip install -r requirements.txt
 ```
 ```bash
-pip install psrqpy numpy torch sympy typing logging matplotlib enum warnings sklearn deepxde abc dataclasses time pathlib pandas
+pip install psrqpy numpy torch sympy typing logging matplotlib argparse scikit-learn deepxde dataclasses pathlib pandas
 ```
 
 ## **Python Installation**
@@ -54,21 +52,6 @@ pip install -e .
 ```
 
 ## **Go CLI Installation**
-
-## **Dependencies**
-
-Additional dependencies required for the CLI are listed below.  
-* sys
-* json
-* argpause
-
-You may install these by running either one of the following commands:  
-```bash
-pip install -r cli_requirements.txt
-```
-```bash
-pip install sys json argpause
-```
 
 ### Build from Source
 
