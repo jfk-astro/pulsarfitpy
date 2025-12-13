@@ -612,7 +612,7 @@ class PulsarPINN:
             print(f"  Train Rsquared - Test Rsquared = {train_test_r2_difference:.4f}")
         else:
             # Small difference means model generalizes well to new data
-            print(f"Good generalization: ΔRsquared = {train_test_r2_difference:.4f}")
+            print(f"Good generalization: Rsquared = {train_test_r2_difference:.4f}")
 
         print("=" * 70)
 
