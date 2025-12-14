@@ -1,0 +1,2 @@
+constant_name,value,equation
+logR,19.504654014762277,"Eq(logB, 0.5*logP + 0.5*logPDOT + logR)"

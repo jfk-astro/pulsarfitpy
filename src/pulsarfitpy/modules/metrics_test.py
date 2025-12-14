@@ -1,23 +1,3 @@
----
-layout: default
-title: pulsarfitpy
----
-
-# **Examples**
-
-<!-- Below, we sample a scientifically accepted formula cited by [Belvedere](https://iopscience.iop.org/article/10.1088/0004-637X/799/1/23) and many other studies regarding the surface magnetic field $B$, period $P$, and period derivative $\dot P$, as shown here:
-
-| $\large B \approx 3.2 \cdot 10^{19} (P \dot P)^{1/2}$ |
-|:-:|
-
-In this markdown file, experimentally determine an approximation for $3.2 \cdot 10^{19}$ through the variable $N$ using pulsarfitpy & ATNF data, and how to use its constant finder feature in a real theoretical system for a one-dimensional pulsar equation. -->
-
-In this example, we use the pulsarfitpy library to analyze the following differential equation relating to pulsar spindown:  
-![Differential Equation](./images/differential_equation.png)
-
-The sample Python code shows how we analyzed this equation with multiple graphs using pulsarfitpy and other Python modules together.
-
-```python
 """
 PINN Test Script for Pulsar Spindown Analysis
 Author: Om Kasar & Saumil Sharma
@@ -322,27 +302,3 @@ print(f"\nn = {learned_n:.4f} +/- {uncertainties['n_braking']['std']:.4f}")
 print(f"95% CI: [{uncertainties['n_braking']['ci_lower']:.4f}, {uncertainties['n_braking']['ci_upper']:.4f}]")
 print(f"log(K) = {learned_logK:.4f} +/- {uncertainties['logK']['std']:.4f}")
 print("\n" + "=" * 80)
-```
-
-![Figure 1 Data](./images/Figure_1.png)
-
-## **Common Parameters**
-
-pulsarfitpy offers analysis of other pulsar properties outside of those outlined in the example. Some common parameters are listed in the table below.
-
-| Parameter | Description |
-|-----------|-------------|
-| `P0` | Pulsar period (s) |
-| `P1` | Period derivative (s/s) |
-| `DM` | Dispersion measure (pc/cm³) |
-| `BSURF` | Surface magnetic field (G) |
-| `EDOT` | Spin-down energy loss rate (erg/s) |
-
-For further analysis of pulsar properties, see the [ATNF Pulsar Parameter List](https://www.atnf.csiro.au/research/pulsar/psrcat/psrcat_help.html#:~:text=Appendix%20A%3A%20The%20Pulsar%20Parameters).
-
-## **Next Steps**
-
-- Explore the [Technical Information](quickstart.md)
-- Check out the Jupyter notebooks in `src/pulsarfitpy/docs/`
-
-[← Back to Home](index.md)

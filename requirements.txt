@@ -1,0 +1,13 @@
+psrqpy
+numpy
+torch
+sympy
+typing
+logging
+matplotlib
+argparse
+scikit-learn
+deepxde
+dataclasses
+pathlib
+pandas
