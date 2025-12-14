@@ -247,7 +247,6 @@ Here, we go over the main attributes of the class:
 ## **Next Steps**
 
 - Explore [Examples](examples.md)
-- Read the [API Reference](api.md)
 - Check out the Jupyter notebooks in `src/pulsarfitpy/docs/`
 
 [← Back to Home](index.md)

@@ -12,10 +12,10 @@ title: pulsarfitpy
 
 In this markdown file, experimentally determine an approximation for $3.2 \cdot 10^{19}$ through the variable $N$ using pulsarfitpy & ATNF data, and how to use its constant finder feature in a real theoretical system for a one-dimensional pulsar equation. -->
 
-In this example, we use pulsarfitpy to analyze the following differential equation relating to pulsar spindown.  
+In this example, we use the pulsarfitpy library to analyze the following differential equation relating to pulsar spindown:  
 ![Differential Equation](./images/differential_equation.png)
 
-The sample Python code shows how to set up a detailed project with multiple graphs using pulsarfitpy and other Python modules together.
+The sample Python code shows how we analyzed this equation with multiple graphs using pulsarfitpy and other Python modules together.
 
 ```python
 """
@@ -342,8 +342,7 @@ For further analysis of pulsar properties, see the [ATNF Pulsar Parameter List](
 
 ## **Next Steps**
 
-- Explore [Technical Information](quickstart.md)
-- Read the [API Reference](api.md)
+- Explore the [Technical Information](quickstart.md)
 - Check out the Jupyter notebooks in `src/pulsarfitpy/docs/`
 
 [← Back to Home](index.md)

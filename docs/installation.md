@@ -12,7 +12,7 @@ title: pulsarfitpy
 
 ## **Dependencies**
 
-To use all features of pulsarfitpy install the following Python modules.  
+To use all features of pulsarfitpy, install the following Python modules.  
 * psrqpy
 * numpy
 * torch
@@ -33,7 +33,8 @@ pip install -r requirements.txt
 ```
 ```bash
 pip install psrqpy numpy torch sympy typing logging matplotlib argparse scikit-learn deepxde dataclasses pathlib pandas
-```
+```  
+For the former, please ensure that you are in the correct directory containing the requirements text file.
 
 ## **Python Installation**
 
@@ -119,7 +120,6 @@ python src/pulsarfitpy/src/pulsarfitpy/gui.py
 
 - Read the [Technical Information](quickstart.md)
 - Explore [Examples](examples.md)
-- Read the [API Reference](api.md)
 - Check out the Jupyter notebooks in `src/pulsarfitpy/docs/`
 
 [← Back to Home](index.md)
