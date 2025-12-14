@@ -1,6 +1,6 @@
-# Visualizing PINN Solutions and Training Dynamics with pulsarfitpy
+# Visualizing PINN Solutions and Training Metrics with pulsarfitpy
 
-After training a Physics-Informed Neural Network (PINN) with pulsarfitpy, comprehensive visualization of model predictions, training dynamics, and diagnostic metrics is essential for understanding model behavior, validating physical consistency, and communicating results. The pulsarfitpy library provides robust visualization functionality through the [VisualizePINN](https://github.com/jfk-astro/pulsarfitpy) class, enabling publication-quality plots and diagnostic visualizations for scientific analysis.
+After training a Physics-Informed Neural Network (PINN) with pulsarfitpy, comprehensive visualization of model predictions, training dynamics, and diagnostic metrics is essential for understanding model behavior, validating physical consistency, and communicating results. The pulsarfitpy library provides visualization functionality through the [VisualizePINN](https://github.com/jfk-astro/pulsarfitpy) class, enabling plots and diagnostic visualizations for scientific analysis.
 
 This markdown file demonstrates how to visualize PINN solutions using the VisualizePINN class, including prediction comparisons, loss convergence analysis, residual diagnostics, uncertainty quantification, and robustness validation. We provide practical examples showing how to create publication-ready figures that effectively communicate your PINN results for scientific presentations and peer-reviewed publications.
 
@@ -97,7 +97,7 @@ Outputs:
 
 5. .plot_uncertainty_quantification(uncertainties, figsize=(10, 6)):
 
-Visualizes uncertainty estimates for learned physical constants with error bars (mean ± standard deviation) and 95% confidence interval bounds.
+Visualizes uncertainty estimates for learned physical constants with error bars (mean +/- standard deviation) and 95% confidence interval bounds.
 
 Inputs:
 
@@ -139,8 +139,8 @@ Generates histogram visualization of braking index distribution from bootstrap s
 
 Inputs:
 
-- learned_constants [Dict[str, float]]: Dictionary of learned constants from store_learned_constants() containing 'n_braking' key
-- uncertainties [Dict]: Dictionary of uncertainties from bootstrap_uncertainty() or monte_carlo_uncertainty() containing 'n_braking' key with 'std' value
+- learned_constants [Dict[str, float]]: Dictionary of learned constants from store_learned_constants() containing learned constants
+- uncertainties [Dict]: Dictionary of uncertainties from bootstrap_uncertainty() or monte_carlo_uncertainty() containing unknown variable key with 'std' value
 - figsize [Tuple[int, int]]: Figure size in inches (width, height). Default: (10, 6)
 
 Outputs:
@@ -154,8 +154,8 @@ Outputs:
   - Bold axis labels and title
 
 # Example Usage
-
-A typical workflow for visualizing PINN results follows this sequence:
+ 
+A typical case for visualizing PINN results can be used for a braking index model as seen here:
 
 1. Train the PINN model:
 ```python
@@ -240,124 +240,6 @@ visualizer.plot_braking_index_distribution(
 )
 ```
 
-# Visualization Format Reference
-
-## Prediction Comparison Plot Structure
-
-The predictions vs. data plot provides a comprehensive visual comparison between model predictions and observational data:
-
-**Visual Elements:**
-- **Data Points**: Three color-coded scatter plots representing train (blue), validation (orange), and test (red) splits with consistent transparency (α=0.4) and marker size (s=30)
-- **Prediction Curve**: Smooth green line showing continuous PINN prediction across extended input range, drawn with higher z-order to appear on top of data points
-- **Performance Annotation**: R² score displayed in wheat-colored box in upper-left corner (if available from test metrics)
-- **Grid and Legend**: Dashed grid lines (α=0.3) for quantitative reading, legend with best automatic positioning
-
-**Interpretation Guidelines:**
-- Well-trained models show prediction curves passing through the center of data point clouds
-- Systematic deviations indicate potential physics constraint violations or insufficient training
-- Test data points (red) should align well with predictions if model generalizes effectively
-
-## Loss Curves Visualization Structure
-
-The dual-panel loss curves plot enables analysis of training dynamics and convergence behavior:
-
-**Left Panel - Total Loss:**
-- Solid lines showing total loss evolution for training set
-- Circular markers (○) on validation loss curve showing checkpoint evaluations
-- Logarithmic y-axis (default) compresses large initial losses while preserving convergence detail
-
-**Right Panel - Loss Components:**
-- Dashed lines (--) showing physics and data loss decomposition for training
-- Dotted lines (:) with square markers (□) showing validation loss components
-- Enables identification of physics-data balance and potential overfitting
-
-**Convergence Indicators:**
-- Smooth monotonic decrease indicates healthy training
-- Divergence between training and validation suggests overfitting
-- Plateau in physics loss while data loss decreases indicates insufficient physics weight
-
-## Residuals Analysis Plot Structure
-
-The residuals plot provides critical diagnostic information about model error patterns:
-
-**Visual Elements:**
-- Purple scatter points showing test set residuals (Y_true - Y_pred) versus input values
-- Red dashed horizontal line at zero indicating perfect prediction
-- Yellow annotation box displaying residual statistics (mean and standard deviation)
-
-**Diagnostic Patterns:**
-- **Random scatter around zero**: Indicates well-calibrated model with no systematic bias
-- **Curved pattern**: Suggests missing nonlinear effects or incorrect differential equation
-- **Heteroscedasticity (funnel shape)**: Indicates input-dependent prediction uncertainty
-- **Outliers**: May represent unusual pulsars or data quality issues
-
-**Statistical Benchmarks:**
-- Residual mean close to zero (|mean| < 0.01) indicates unbiased predictions
-- Small standard deviation indicates tight prediction accuracy
-- Residual magnitude should be consistent with test set RMSE
-
-## Prediction Scatter Plot Structure
-
-The predicted vs. true values scatter plot assesses overall model accuracy:
-
-**Visual Elements:**
-- Teal scatter points comparing predictions against ground truth
-- Red dashed diagonal line showing perfect prediction (Y_pred = Y_true)
-- Light blue annotation box displaying R² score
-
-**Interpretation Guidelines:**
-- Points clustering tightly along diagonal indicate accurate predictions
-- Vertical or horizontal spreads indicate systematic over/under-prediction
-- R² score quantifies proportion of variance explained (target: R² > 0.95 for good models)
-
-## Uncertainty Quantification Plot Structure
-
-The uncertainty plot visualizes confidence in learned physical constants:
-
-**Visual Elements:**
-- Error bars showing mean ± standard deviation for each constant
-- Red horizontal markers indicating 95% confidence interval bounds
-- X-axis labels with underscores replaced by newlines for readability
-
-**Interpretation Guidelines:**
-- Narrow confidence intervals indicate well-constrained parameters
-- Overlapping intervals between constants may suggest parameter correlation
-- Constants with large uncertainties may require more data or stronger physics constraints
-
-## Robustness Validation Plot Structure
-
-The dual-panel robustness plot summarizes model validation tests:
-
-**Left Panel - Pass/Fail Summary:**
-- Green bars: Tests passed (model demonstrates robustness)
-- Red bars: Tests failed (model exhibits concerning behavior)
-- Large [PASS]/[FAIL] symbols for immediate visual assessment
-
-**Right Panel - Detailed Metrics:**
-- Monospace text displaying quantitative test results
-- Three test categories: Permutation, Feature Shuffling, Impossible Physics
-- Specific p-values, R² differences, and comparison metrics
-
-**Passing Criteria:**
-- **Permutation Test**: p-value < 0.05 (model significantly better than random)
-- **Feature Shuffling**: R² difference > 0.1 (model relies on feature relationships)
-- **Impossible Physics**: Real R² >> Impossible R² (model learns valid physics)
-
-## Braking Index Distribution Plot Structure
-
-The histogram plot visualizes parameter uncertainty and compares against theoretical predictions:
-
-**Visual Elements:**
-- Sky blue histogram showing bootstrap distribution of learned braking index
-- Green solid line: Learned value from PINN training
-- Orange dotted line: Canonical theoretical prediction (n=3.0)
-- Legend identifying all reference lines
-
-**Interpretation Guidelines:**
-- Narrow distributions indicate high confidence in learned parameter
-- Distance from canonical value (n=3.0) indicates deviation from standard dipole braking
-- Distribution shape assesses parameter uncertainty and sampling variability
-
 # Advanced Visualization Examples
 
 ## Creating Publication-Ready Figures
@@ -372,8 +254,6 @@ visualizer.plot_predictions_vs_data(
     figsize=(10, 7),
     save_path="figures/publication_predictions.png"
 )
-
-# Note: The saved figure will have 300 DPI resolution suitable for publication
 ```
 
 ## Multi-Panel Diagnostic Dashboard
@@ -439,179 +319,12 @@ visualizer.plot_predictions_vs_data(
 )
 ```
 
-## Animated Training Convergence
-```python
-import matplotlib.animation as animation
-
-# Note: This requires custom implementation
-# The following pseudocode illustrates the concept
-
-def create_training_animation(pinn, output_file="training_convergence.mp4"):
-    """
-    Create animated visualization of training convergence.
-    
-    Requires saving model checkpoints during training at regular intervals.
-    """
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-    
-    def update_frame(epoch):
-        # Load checkpoint from epoch
-        # Plot loss curves up to current epoch
-        # Plot current predictions
-        pass
-    
-    anim = animation.FuncAnimation(
-        fig, update_frame, 
-        frames=range(0, pinn.epochs, 100),
-        interval=100
-    )
-    anim.save(output_file, writer='ffmpeg', fps=10)
-```
-
-# Integration with Scientific Workflows
-
-## Jupyter Notebook Integration
-
-For interactive analysis in Jupyter notebooks:
-```python
-# Enable inline plotting
-%matplotlib inline
-
-# Initialize visualizer
-visualizer = VisualizePINN(pinn)
-
-# Create interactive widget for exploring predictions
-from ipywidgets import interact, FloatSlider
-
-def interactive_prediction_plot(extend_factor):
-    x_ext, y_ext = pinn.predict_extended(extend=extend_factor, n_points=300)
-    visualizer.plot_predictions_vs_data(
-        x_values=x_ext,
-        y_predictions=y_ext
-    )
-
-interact(
-    interactive_prediction_plot,
-    extend_factor=FloatSlider(min=0.0, max=2.0, step=0.1, value=0.5)
-)
-```
-
-## Batch Visualization Pipeline
-
-For processing multiple PINN models:
-```python
-import os
-
-def visualize_all_models(model_directory, output_directory):
-    """
-    Generate standardized visualizations for all trained models.
-    """
-    os.makedirs(output_directory, exist_ok=True)
-    
-    for model_file in os.listdir(model_directory):
-        if model_file.endswith('.pkl'):
-            # Load PINN model
-            pinn = load_pinn_model(os.path.join(model_directory, model_file))
-            visualizer = VisualizePINN(pinn)
-            
-            model_name = model_file.replace('.pkl', '')
-            
-            # Generate all visualizations
-            visualizer.plot_predictions_vs_data(
-                save_path=f"{output_directory}/{model_name}_predictions.png"
-            )
-            visualizer.plot_loss_curves(log_scale=True)
-            plt.savefig(f"{output_directory}/{model_name}_losses.png")
-            plt.close()
-            
-            visualizer.plot_residuals_analysis()
-            plt.savefig(f"{output_directory}/{model_name}_residuals.png")
-            plt.close()
-            
-            print(f"Visualizations completed for {model_name}")
-```
-
-## Integration with ATNF Data Comparison
-```python
-import pandas as pd
-
-# Load ATNF catalogue data
-atnf_data = pd.read_csv("atnf_pulsar_data.csv")
-
-# Generate PINN predictions at ATNF data points
-x_atnf = atnf_data['log_P'].values.reshape(-1, 1)
-y_pinn_pred = pinn.predict(x_atnf)
-
-# Create custom comparison visualization
-fig, ax = plt.subplots(figsize=(10, 8))
-
-# Plot ATNF observations
-ax.scatter(
-    atnf_data['log_P'],
-    atnf_data['log_Pdot'],
-    c='blue',
-    alpha=0.5,
-    s=50,
-    label='ATNF Observations',
-    marker='o'
-)
-
-# Plot PINN predictions
-ax.scatter(
-    x_atnf,
-    y_pinn_pred,
-    c='red',
-    alpha=0.5,
-    s=50,
-    label='PINN Predictions',
-    marker='x'
-)
-
-# Add connecting lines for residuals
-for i in range(len(x_atnf)):
-    ax.plot(
-        [x_atnf[i], x_atnf[i]],
-        [atnf_data['log_Pdot'].iloc[i], y_pinn_pred[i]],
-        'gray',
-        alpha=0.2,
-        linewidth=0.5
-    )
-
-ax.set_xlabel(r"$\log_{10}(P)$ [s]", fontsize=12, fontweight='bold')
-ax.set_ylabel(r"$\log_{10}(\dot{P})$ [s/s]", fontsize=12, fontweight='bold')
-ax.set_title("PINN Predictions vs. ATNF Catalogue", fontsize=14, fontweight='bold')
-ax.legend()
-ax.grid(True, alpha=0.3)
-
-plt.tight_layout()
-plt.savefig("pinn_atnf_comparison.png", dpi=300)
-plt.show()
-```
-
-# Best Practices for Visualization
-
-1. **Always visualize loss curves**: Verify training convergence and check for overfitting by examining training vs. validation loss trajectories.
-
-2. **Generate diagnostic plots**: Use residuals analysis and prediction scatter plots to identify systematic errors and assess model calibration.
-
-3. **Include uncertainty estimates**: Visualize parameter uncertainties to communicate confidence levels and guide interpretation of learned constants.
-
-4. **Save high-resolution figures**: Use `save_path` parameter with DPI=300 for publication-quality outputs suitable for journals.
-
-5. **Use descriptive axis labels**: Include units and LaTeX formatting for professional presentation (e.g., r"$\log_{10}(P)$ [s]").
-
-6. **Validate robustness**: Always run and visualize robustness tests to ensure model learns meaningful physical relationships.
-
-7. **Compare against baselines**: Include theoretical predictions or empirical fits as reference lines for context.
-
-8. **Document figure generation**: Keep scripts that generate figures under version control for reproducibility.
-
 # Usage Notes
 
 - All visualization methods display figures by default; use `save_path` parameter to save instead
 - Matplotlib figures can be customized further after generation using standard matplotlib API
 - Large datasets may require adjusting marker sizes and transparencies for clarity
-- Logarithmic scaling (log_scale=True) is recommended for loss curves to visualize convergence clearly
+- Logarithmic scaling (log_scale=True) is recommended for loss curves to visualize convergence clearly or very high values in the dataset
 - Color schemes follow standard conventions: blue (train), orange (validation), red (test), green (predictions)
 - Grid lines with α=0.3 provide quantitative reference without visual clutter
 - Figure sizes are optimized for screen display; adjust for specific publication requirements
