@@ -108,11 +108,11 @@ val_total_loss: Validation total loss (if available)
 val_physics_loss: Validation physics loss (if available)
 val_data_loss: Validation data loss (if available)
 
-# Usage Workflow
+# Example Usage
 
 A typical workflow for exporting PINN results follows this sequence:
 
-1. Train your PINN model:
+1. Train the PINN model:
 
 ```python
 pinn = PulsarPINN(
@@ -394,16 +394,6 @@ comparison.to_csv("pinn_atnf_comparison.csv", index=False)
 5. **Version control**: Include date, author, and analysis version in metadata for tracking results across multiple experiments.
 
 6. **Organize outputs**: Use directory structures to organize exports from multiple PINN experiments for easy comparison.
-
-# Troubleshooting Export Issues
-
-| Issue | Solution |
-|-------|----------|
-| "FileNotFoundError: Parent directory does not exist" | ExportPINN automatically creates parent directories. If error persists, check file path validity. |
-| "No test metrics available" | Run `pinn.evaluate_test_set()` before exporting metrics. |
-| "Uncertainty computation is slow" | Reduce `n_iterations` parameter. For quick estimates, use 20-50 iterations. |
-| "CSV contains many NaN values in validation columns" | This is expected if validation was only performed at certain epochs. NaN indicates no validation at that epoch. |
-| "Memory error during uncertainty export" | Use `uncertainty_method='monte_carlo'` with smaller `n_iterations`, or reduce bootstrap sample size. |
 
 # Usage Notes
 

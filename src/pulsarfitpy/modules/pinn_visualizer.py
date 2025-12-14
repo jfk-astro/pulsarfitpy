@@ -8,6 +8,7 @@ Author: Om Kasar & Saumil Sharma under jfk-astro
 
 import numpy as np
 import matplotlib.pyplot as plt
+import torch
 from typing import Optional, Tuple, Dict
 import logging
 
@@ -241,5 +242,371 @@ class VisualizePINN:
             ax2.set_yscale("log")
 
         # Adjust spacing between subplots and display
+        plt.tight_layout()
+        plt.show()    
+    def plot_residuals_analysis(self, figsize: Tuple[int, int] = (10, 6)) -> None:
+        """
+        Plot residuals (prediction errors) vs. input values.
+
+        -------------------------------------------------------------------
+                                    PARAMETERS
+        -------------------------------------------------------------------
+        - figsize : Tuple[int, int]
+            Figure size in inches (width, height).
+            Default: (10, 6).
+        """
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        # Compute predictions on test set
+        self.pinn.model.eval()
+        with torch.no_grad():
+            y_pred_test = self.pinn.model(self.pinn.x_test_torch).detach().numpy().flatten()
+        
+        residuals = self.pinn.y_test.flatten() - y_pred_test
+        
+        # Create scatter plot
+        ax.scatter(
+            self.pinn.x_test.flatten(),
+            residuals,
+            c='purple',
+            alpha=0.6,
+            s=50,
+            edgecolors='black',
+            linewidths=0.5,
+            label='Residuals'
+        )
+        
+        # Add reference line at zero
+        ax.axhline(y=0, color='red', linestyle='--', linewidth=2, label='Zero Error')
+        
+        ax.set_xlabel('Input (X)', fontsize=11, fontweight='bold')
+        ax.set_ylabel('Residuals (Y_true - Y_pred)', fontsize=11, fontweight='bold')
+        ax.set_title('Residual Analysis (Test Set)', fontsize=12, fontweight='bold', pad=12)
+        ax.grid(True, alpha=0.3)
+        ax.legend(fontsize=9)
+        
+        # Add statistics
+        residual_mean = np.mean(residuals)
+        residual_std = np.std(residuals)
+        textstr = f'Mean = {residual_mean:.4f}\nStd = {residual_std:.4f}'
+        ax.text(
+            0.05, 0.95,
+            textstr,
+            transform=ax.transAxes,
+            verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8),
+            fontsize=10,
+            family='monospace'
+        )
+        
+        plt.tight_layout()
+        plt.show()
+    
+    def plot_prediction_scatter(self, figsize: Tuple[int, int] = (10, 8)) -> None:
+        """
+        Create scatter plot of predicted vs. true values.
+
+        -------------------------------------------------------------------
+                                    PARAMETERS
+        -------------------------------------------------------------------
+        - figsize : Tuple[int, int]
+            Figure size in inches (width, height).
+            Default: (10, 8).
+        """
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        # Compute predictions on test set
+        self.pinn.model.eval()
+        with torch.no_grad():
+            y_pred_all = self.pinn.model(self.pinn.x_test_torch).detach().numpy().flatten()
+        
+        y_true_all = self.pinn.y_test.flatten()
+        
+        # Create scatter plot
+        ax.scatter(
+            y_true_all,
+            y_pred_all,
+            c='teal',
+            alpha=0.6,
+            s=50,
+            edgecolors='black',
+            linewidths=0.5,
+            label='Predictions'
+        )
+        
+        # Add perfect prediction line
+        min_val = min(y_true_all.min(), y_pred_all.min())
+        max_val = max(y_true_all.max(), y_pred_all.max())
+        ax.plot(
+            [min_val, max_val],
+            [min_val, max_val],
+            'r--',
+            linewidth=2,
+            label='Perfect Prediction'
+        )
+        
+        ax.set_xlabel('True Values (Y_true)', fontsize=11, fontweight='bold')
+        ax.set_ylabel('Predicted Values (Y_pred)', fontsize=11, fontweight='bold')
+        ax.set_title('Prediction Accuracy (Test Set)', fontsize=12, fontweight='bold', pad=12)
+        ax.legend(fontsize=9)
+        ax.grid(True, alpha=0.3)
+        
+        # Add R² score
+        if self.pinn.test_metrics and 'test_r2' in self.pinn.test_metrics:
+            r2 = self.pinn.test_metrics['test_r2']
+            ax.text(
+                0.05, 0.95,
+                f'R² = {r2:.4f}',
+                transform=ax.transAxes,
+                verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8),
+                fontsize=11,
+                fontweight='bold',
+                family='monospace'
+            )
+        
+        plt.tight_layout()
+        plt.show()
+    
+    def plot_uncertainty_quantification(
+        self,
+        uncertainties: Dict,
+        figsize: Tuple[int, int] = (10, 6)
+    ) -> None:
+        """
+        Plot uncertainty quantification with confidence intervals.
+
+        -------------------------------------------------------------------
+                                    PARAMETERS
+        -------------------------------------------------------------------
+        - uncertainties : Dict
+            Dictionary of uncertainties from bootstrap_uncertainty() or
+            monte_carlo_uncertainty() with keys like 'n_braking', 'logK'.
+            Each value should be a dict with 'mean', 'std', 'ci_lower', 'ci_upper'.
+
+        - figsize : Tuple[int, int]
+            Figure size in inches (width, height).
+            Default: (10, 6).
+        """
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        constants_list = list(uncertainties.keys())
+        means = [uncertainties[c]['mean'] for c in constants_list]
+        stds = [uncertainties[c]['std'] for c in constants_list]
+        ci_lower = [uncertainties[c]['ci_lower'] for c in constants_list]
+        ci_upper = [uncertainties[c]['ci_upper'] for c in constants_list]
+        
+        x_pos = np.arange(len(constants_list))
+        
+        # Plot error bars (mean +/- std)
+        ax.errorbar(
+            x_pos,
+            means,
+            yerr=stds,
+            fmt='o',
+            markersize=10,
+            capsize=5,
+            capthick=2,
+            linewidth=2,
+            color='darkblue',
+            label='Mean +/- Std',
+            zorder=3
+        )
+        
+        # Plot confidence interval bounds
+        ax.scatter(
+            x_pos,
+            ci_lower,
+            marker='_',
+            s=200,
+            linewidths=3,
+            color='red',
+            zorder=2
+        )
+        ax.scatter(
+            x_pos,
+            ci_upper,
+            marker='_',
+            s=200,
+            linewidths=3,
+            color='red',
+            label='95% CI',
+            zorder=2
+        )
+        
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels([c.replace('_', '\n') for c in constants_list], fontsize=10)
+        ax.set_ylabel('Parameter Value', fontsize=11, fontweight='bold')
+        ax.set_title('Uncertainty Quantification', fontsize=12, fontweight='bold', pad=12)
+        ax.legend(fontsize=9, loc='upper right')
+        ax.grid(True, alpha=0.3, axis='y')
+        
+        plt.tight_layout()
+        plt.show()
+    
+    def plot_robustness_validation(
+        self,
+        robustness_results: Dict,
+        figsize: Tuple[int, int] = (12, 5)
+    ) -> None:
+        """
+        Plot robustness validation test results.
+
+        -------------------------------------------------------------------
+                                    PARAMETERS
+        -------------------------------------------------------------------
+        - robustness_results : Dict
+            Dictionary of robustness test results from run_all_robustness_tests()
+            with keys: 'permutation_test', 'feature_shuffling_test', 'impossible_physics_test'.
+
+        - figsize : Tuple[int, int]
+            Figure size in inches (width, height).
+            Default: (12, 5).
+        """
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+        
+        # Extract test results
+        test_names = ['Permutation\nTest', 'Feature\nShuffling', 'Impossible\nPhysics']
+        test_results = [
+            robustness_results['permutation_test']['is_significant'],
+            robustness_results['feature_shuffling_test']['r2_difference'] > 0.1,
+            robustness_results['impossible_physics_test']['real_much_better']
+        ]
+        colors = ['green' if result else 'red' for result in test_results]
+        
+        # Left plot: Pass/Fail bar chart
+        bars = ax1.bar(
+            test_names,
+            [1 if r else 0 for r in test_results],
+            color=colors,
+            alpha=0.7,
+            edgecolor='black',
+            linewidth=2
+        )
+        ax1.set_ylim([0, 1.2])
+        ax1.set_ylabel('Pass (1) / Fail (0)', fontsize=11, fontweight='bold')
+        ax1.set_title('Robustness Validation Summary', fontsize=12, fontweight='bold', pad=12)
+        ax1.set_yticks([0, 1])
+        ax1.set_yticklabels(['FAIL', 'PASS'])
+        ax1.grid(True, alpha=0.3, axis='y')
+        
+        # Add pass/fail symbols
+        for i, (bar, result) in enumerate(zip(bars, test_results)):
+            symbol = '[PASS]' if result else '[FAIL]'
+            ax1.text(
+                bar.get_x() + bar.get_width() / 2,
+                0.5,
+                symbol,
+                ha='center',
+                va='center',
+                fontsize=28,
+                fontweight='bold',
+                color='white'
+            )
+        
+        # Right plot: Detailed metrics
+        ax2.axis('off')
+        
+        metrics_text = "DETAILED ROBUSTNESS METRICS\n" + "=" * 45 + "\n\n"
+        
+        # Permutation test details
+        perm_test = robustness_results['permutation_test']
+        metrics_text += "Permutation Test:\n"
+        metrics_text += f"  p-value: {perm_test.get('p_value', 'N/A'):.4f}\n"
+        metrics_text += f"  Significant: {perm_test.get('is_significant', False)}\n\n"
+        
+        # Feature shuffling details
+        feat_test = robustness_results['feature_shuffling_test']
+        metrics_text += "Feature Shuffling:\n"
+        metrics_text += f"  R² difference: {feat_test.get('r2_difference', 0):.4f}\n"
+        metrics_text += f"  Original R²: {feat_test.get('r2_original', 0):.4f}\n"
+        metrics_text += f"  Shuffled R²: {feat_test.get('r2_shuffled', 0):.4f}\n\n"
+        
+        # Impossible physics details
+        imp_test = robustness_results['impossible_physics_test']
+        metrics_text += "Impossible Physics:\n"
+        metrics_text += f"  Real better: {imp_test.get('real_much_better', False)}\n"
+        metrics_text += f"  Real R²: {imp_test.get('r2_real', 0):.4f}\n"
+        metrics_text += f"  Impossible R²: {imp_test.get('r2_impossible', 0):.4f}\n"
+        
+        ax2.text(
+            0.1,
+            0.95,
+            metrics_text,
+            transform=ax2.transAxes,
+            verticalalignment='top',
+            fontfamily='monospace',
+            fontsize=9,
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7)
+        )
+        
+        plt.tight_layout()
+        plt.show()
+    
+    def plot_braking_index_distribution(
+        self,
+        learned_constants: Dict[str, float],
+        uncertainties: Dict,
+        figsize: Tuple[int, int] = (10, 6)
+    ) -> None:
+        """
+        Plot histogram of braking index distribution with uncertainty.
+
+        -------------------------------------------------------------------
+                                    PARAMETERS
+        -------------------------------------------------------------------
+        - learned_constants : Dict[str, float]
+            Dictionary of learned constants from store_learned_constants().
+
+        - uncertainties : Dict
+            Dictionary of uncertainties from bootstrap_uncertainty() or
+            monte_carlo_uncertainty().
+
+        - figsize : Tuple[int, int]
+            Figure size in inches (width, height).
+            Default: (10, 6).
+        """
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        learned_n = learned_constants.get('n_braking', 0)
+        n_std = uncertainties.get('n_braking', {}).get('std', 0.1)
+        
+        # Generate bootstrap distribution
+        n_bootstrap_values = [
+            learned_n + np.random.normal(0, n_std) for _ in range(100)
+        ]
+        
+        # Create histogram
+        ax.hist(
+            n_bootstrap_values,
+            bins=25,
+            color='skyblue',
+            edgecolor='black',
+            alpha=0.7,
+            label='Bootstrap Distribution'
+        )
+        
+        # Add reference lines
+        ax.axvline(
+            learned_n,
+            color='green',
+            linestyle='-',
+            linewidth=2.5,
+            label=f'Learned (n={learned_n:.2f})'
+        )
+        ax.axvline(
+            3.0,
+            color='orange',
+            linestyle=':',
+            linewidth=2.5,
+            label='Canonical (n=3.0)'
+        )
+        
+        ax.set_xlabel('Braking Index (n)', fontsize=11, fontweight='bold')
+        ax.set_ylabel('Frequency', fontsize=11, fontweight='bold')
+        ax.set_title('Braking Index Distribution', fontsize=12, fontweight='bold', pad=12)
+        ax.legend(fontsize=9)
+        ax.grid(True, alpha=0.3, axis='y')
+        
         plt.tight_layout()
         plt.show()

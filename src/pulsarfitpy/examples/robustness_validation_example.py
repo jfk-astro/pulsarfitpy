@@ -95,8 +95,8 @@ then retrain. If the real model significantly outperforms permuted models,
 it's learning genuine physics.
 
 INTERPRETATION:
-- p-value < 0.05: Real model is significantly better → genuine learning
-- p-value >= 0.05: Real model not better than random → spurious correlations
+- p-value < 0.05: Real model is significantly better -> genuine learning
+- p-value >= 0.05: Real model not better than random -> spurious correlations
 """)
 
 permutation_results = pinn.validate_with_permutation_test(
@@ -121,7 +121,7 @@ relationship, then retrain. Real features should perform much better.
 
 INTERPRETATION:
 - R² difference > 0.1: Input features are important
-- R² difference ≈ 0: Input features don't help (problem!)
+- R² difference = 0: Input features don't help (problem!)
 """)
 
 feature_results = pinn.validate_with_feature_shuffling(
@@ -145,7 +145,7 @@ meaningless relationship. A robust model should perform poorly on this.
 
 INTERPRETATION:
 - Real >> Impossible: Model respects physics
-- Real ≈ Impossible: Model ignores physics (problem!)
+- Real = Impossible: Model ignores physics (problem!)
 """)
 
 physics_results = pinn.validate_with_impossible_physics(
@@ -165,37 +165,37 @@ print("\nTest Summary:")
 print("-" * 80)
 
 # Permutation test
-perm_status = "✓ PASS" if permutation_results['is_significant'] else "✗ FAIL"
+perm_status = "[PASS]" if permutation_results['is_significant'] else "[FAIL]"
 print(f"\n1. Permutation Test: {perm_status}")
 print(f"   Real model R²:     {permutation_results['real_r2']:.6f}")
 print(f"   Random mean R²:    {permutation_results['permuted_r2_mean']:.6f}")
 print(f"   p-value:           {permutation_results['p_value']:.4f}")
 if permutation_results['is_significant']:
-    print("   → Model learns genuine relationships")
+    print("   - Model learns genuine relationships")
 else:
-    print("   → WARNING: Model may capture spurious correlations")
+    print("   - WARNING: Model may capture spurious correlations")
 
 # Feature shuffling test
-feat_status = "✓ PASS" if feature_results['r2_difference'] > 0.1 else "✗ FAIL"
+feat_status = "[PASS]" if feature_results['r2_difference'] > 0.1 else "[FAIL]"
 print(f"\n2. Feature Shuffling Test: {feat_status}")
 print(f"   Real model R²:     {feature_results['real_r2']:.6f}")
 print(f"   Shuffled mean R²:  {feature_results['shuffled_r2_mean']:.6f}")
 print(f"   Improvement:       {feature_results['r2_difference']:.6f}")
 if feature_results['r2_difference'] > 0.1:
-    print("   → Input features contain genuine information")
+    print("   - Input features contain genuine information")
 else:
-    print("   → WARNING: Features may not be informative")
+    print("   - WARNING: Features may not be informative")
 
 # Impossible physics test
-phys_status = "✓ PASS" if physics_results['real_much_better'] else "✗ FAIL"
+phys_status = "[PASS]" if physics_results['real_much_better'] else "[FAIL]"
 print(f"\n3. Impossible Physics Test: {phys_status}")
 print(f"   Real physics R²:       {physics_results['real_r2']:.6f}")
 print(f"   Impossible physics R²: {physics_results['impossible_r2']:.6f}")
 print(f"   Difference:            {physics_results['r2_difference']:.6f}")
 if physics_results['real_much_better']:
-    print("   → Model respects physical constraints")
+    print("   - Model respects physical constraints")
 else:
-    print("   → WARNING: Model may ignore physics")
+    print("   - WARNING: Model may ignore physics")
 
 # Overall verdict
 all_passed = (
@@ -209,25 +209,25 @@ print("FINAL VERDICT")
 print("=" * 80)
 
 if all_passed:
-    print("\n✓✓✓ ALL TESTS PASSED ✓✓✓")
+    print("\n[OK][OK][OK] ALL TESTS PASSED [OK][OK][OK]")
     print("\nConclusion:")
     print("  The model demonstrates robust learning of genuine physical")
     print("  relationships. It is suitable for scientific inference and")
     print("  publication.")
     print("\nRecommendation:")
-    print("  ✓ Safe to use fitted constants in scientific analysis")
-    print("  ✓ Model predictions are reliable")
-    print("  ✓ Include these validation results in publication")
+    print("  [OK] Safe to use fitted constants in scientific analysis")
+    print("  [OK] Model predictions are reliable")
+    print("  [OK] Include these validation results in publication")
 else:
-    print("\n✗✗✗ SOME TESTS FAILED ✗✗✗")
+    print("\n[FAIL][FAIL][FAIL] SOME TESTS FAILED [FAIL][FAIL][FAIL]")
     print("\nConclusion:")
     print("  The model shows signs of learning spurious correlations")
     print("  or failing to respect physical constraints.")
     print("\nRecommendation:")
-    print("  ✗ Use caution with fitted constants")
-    print("  ✗ Consider model architecture changes")
-    print("  ✗ Check data quality and preprocessing")
-    print("  ✗ Try different physics weights or training strategies")
+    print("  [FAIL] Use caution with fitted constants")
+    print("  [FAIL] Consider model architecture changes")
+    print("  [FAIL] Check data quality and preprocessing")
+    print("  [FAIL] Try different physics weights or training strategies")
 
 print("\n" + "=" * 80)
 print("REPORTING FOR PUBLICATION")

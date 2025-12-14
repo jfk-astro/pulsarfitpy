@@ -377,7 +377,13 @@ class PulsarPINN:
             Default: 1.0.
         """
         # Inform user that training starts
-        logger.info(f"Starting training for {epochs} epochs")
+        print("\n" + "=" * 80)
+        print("PINN TRAINING INITIATED")
+        print("=" * 80)
+        print(f"Total epochs: {epochs:,}")
+        print(f"Report interval: Every {training_reports} epochs")
+        print(f"Physics weight: {physics_weight:.2f} | Data weight: {data_weight:.2f}")
+        print("=" * 80 + "\n")
 
         # What each epoch does
         for epoch in range(epochs):
@@ -399,27 +405,33 @@ class PulsarPINN:
                 self.loss_log["val_physics"].append(val_loss["physics"])
                 self.loss_log["val_data"].append(val_loss["data"])
 
-                learned_constants = ", ".join(
-                    f"{name}={value.item():.4f}"
-                    for name, value in self.learnable_params.items()
-                )
+                # Format progress
+                progress_pct = (epoch / epochs) * 100
+                epoch_str = f"[{epoch:,}/{epochs:,}]".ljust(20)
+                progress_str = f"{progress_pct:6.2f}%"
 
-                # Print progress report to console
-                logger.info(
-                    f"Epoch {epoch:5d}: Train={train_loss['total']:.6e}, "
-                    f"Val={val_loss['total']:.6e} | {learned_constants}"
-                )
+                # Print epoch progress header
+                print(f"Epoch {epoch_str} {progress_str}")
+                print("-" * 80)
 
-                # Print all losses at the current epoch
-                logger.info(f"Epoch {epoch:5d} Losses:")
-                logger.info(f"  Total Loss: {train_loss['total']:.6e}")
-                logger.info(f"  Physics Loss: {train_loss['physics']:.6e}")
-                logger.info(f"  Data Loss: {train_loss['data']:.6e}")
+                # Print training and validation losses
+                print(f"  Train Loss | Total: {train_loss['total']:12.6e} | Physics: {train_loss['physics']:12.6e} | Data: {train_loss['data']:12.6e}")
+                print(f"  Val Loss   | Total: {val_loss['total']:12.6e} | Physics: {val_loss['physics']:12.6e} | Data: {val_loss['data']:12.6e}")
 
-        # Print final learned constants after PINN training is done
-        print("LEARNED CONSTANTS: ")
+                # Print learned constants in a clean format
+                print(f"\n  Learned Constants:")
+                for name, param in self.learnable_params.items():
+                    print(f"    {name:15s} = {param.item():12.8f}")
+                print("-" * 80 + "\n")
+
+        # Print final summary after PINN training is done
+        print("\n" + "=" * 80)
+        print("TRAINING COMPLETE")
+        print("=" * 80)
+        print("Final Learned Constants:")
         for name, param in self.learnable_params.items():
-            print(f"  {name:10s} = {param.item():.8f}")
+            print(f"  {name:15s} = {param.item():12.8f}")
+        print("=" * 80 + "\n")
 
     def _train_step(
         self, physics_weight: float, data_weight: float
@@ -744,7 +756,7 @@ class PulsarPINN:
             print(f"Sample fraction: {sample_fraction:.1%}")
             print(f"Training epochs per iteration: {epochs}")
             print(f"Confidence level: {confidence_level:.1%}")
-            print()
+            print("=" * 70 + "\n")
 
         # Store original model state
         original_constants = self.store_learned_constants()
@@ -756,7 +768,8 @@ class PulsarPINN:
         # Perform bootstrap iterations
         for i in range(n_bootstrap):
             if verbose and (i + 1) % max(1, n_bootstrap // 10) == 0:
-                print(f"  Bootstrap iteration {i + 1}/{n_bootstrap}...")
+                progress_pct = ((i + 1) / n_bootstrap) * 100
+                print(f"  Bootstrap [{i+1:,}/{n_bootstrap:,}] {progress_pct:6.2f}%")
 
             # Randomly sample training data with replacement
             # Calculate the number of samples for bootstrap resampling
@@ -793,6 +806,11 @@ class PulsarPINN:
         self.model.load_state_dict(original_model_state)
         self.set_learn_constants(original_constants)
 
+        if verbose:
+            print("\n" + "=" * 70)
+            print("BOOTSTRAP UNCERTAINTY RESULTS")
+            print("=" * 70)
+
         # Compute statistics
         alpha = 1 - confidence_level
         results = {}
@@ -813,11 +831,14 @@ class PulsarPINN:
             }
 
             if verbose:
-                print(f"\n{name}:")
-                print(f"  Original fitted value: {original_constants[name]:.6f}")
-                print(f"  Bootstrap mean:        {mean_val:.6f}")
-                print(f"  Bootstrap std dev:     {std_val:.6f}")
-                print(f"  {confidence_level:.0%} CI: [{ci_lower:.6f}, {ci_upper:.6f}]")
+                print(f"\n{name.upper()}")
+                print("-" * 70)
+                print(f"  Original fitted value:  {original_constants[name]:14.8f}")
+                print(f"  Bootstrap mean:         {mean_val:14.8f}")
+                print(f"  Bootstrap std dev:      {std_val:14.8f}")
+                print(f"  {confidence_level:.0%} Confidence Interval:")
+                print(f"    Lower bound:          {ci_lower:14.8f}")
+                print(f"    Upper bound:          {ci_upper:14.8f}")
 
         if verbose:
             print("\n" + "=" * 70)
@@ -897,7 +918,8 @@ class PulsarPINN:
 
         for i in range(n_simulations):
             if verbose and (i + 1) % max(1, n_simulations // 10) == 0:
-                print(f"  Simulation {i + 1}/{n_simulations}...")
+                progress_pct = ((i + 1) / n_simulations) * 100
+                print(f"  Simulation [{i+1:,}/{n_simulations:,}] {progress_pct:6.2f}%")
 
             # Add Gaussian noise to data
             x_noise = torch.randn_like(self.x_train_torch) * (noise_level * x_std)
@@ -948,11 +970,14 @@ class PulsarPINN:
             }
 
             if verbose:
-                print(f"\n{name}:")
-                print(f"  Original fitted value: {original_constants[name]:.6f}")
-                print(f"  Monte Carlo mean:      {mean_val:.6f}")
-                print(f"  Monte Carlo std dev:   {std_val:.6f}")
-                print(f"  {confidence_level:.0%} CI: [{ci_lower:.6f}, {ci_upper:.6f}]")
+                print(f"\n{name.upper()}")
+                print("-" * 70)
+                print(f"  Original fitted value:  {original_constants[name]:14.8f}")
+                print(f"  Monte Carlo mean:       {mean_val:14.8f}")
+                print(f"  Monte Carlo std dev:    {std_val:14.8f}")
+                print(f"  {confidence_level:.0%} Confidence Interval:")
+                print(f"    Lower bound:          {ci_lower:14.8f}")
+                print(f"    Upper bound:          {ci_upper:14.8f}")
 
         if verbose:
             print("\n" + "=" * 70)
@@ -1071,7 +1096,8 @@ class PulsarPINN:
 
         for i in range(n_permutations):
             if verbose and (i + 1) % max(1, n_permutations // 10) == 0:
-                print(f"  Permutation {i + 1}/{n_permutations}...")
+                progress_pct = ((i + 1) / n_permutations) * 100
+                print(f"  Permutation [{i+1:,}/{n_permutations:,}] {progress_pct:6.2f}%")
 
             # Randomly shuffle target labels (breaks real relationships)
             permuted_indices = np.random.permutation(len(self.y_train_torch))
@@ -1118,16 +1144,18 @@ class PulsarPINN:
             print("\n" + "=" * 70)
             print("PERMUTATION TEST RESULTS")
             print("=" * 70)
-            print(f"\nReal model Rsquared:           {real_r2:.6f}")
-            print(f"Permuted models Rsquared mean: {permuted_mean:.6f} plus minus {permuted_std:.6f}")
-            print(f"p-value:                 {p_value:.4f}")
-            print(f"\nSignificance test (alpha = {significance_level}):")
+            print(f"\nReal model Rsquared:           {real_r2:.8f}")
+            print(f"Permuted models Rsquared mean: {permuted_mean:.8f} +/- {permuted_std:.8f}")
+            print(f"\np-value: {p_value:.6f}")
+            print(f"Significance level: {significance_level:.6f}")
+            print("\n" + "-" * 70)
+            print("ASSESSMENT:")
             if is_significant:
-                print("   PASSED: Real model significantly better than random")
-                print("     Model learns genuine physical relationships")
+                print("   [PASS] Real model significantly better than random")
+                print("   Model learns genuine physical relationships")
             else:
-                print("    FAILED: Real model not significantly better than random")
-                print("     WARNING: Model may be capturing spurious correlations")
+                print("   [FAIL] Real model not significantly better than random")
+                print("   WARNING: Model may be capturing spurious correlations")
             print("=" * 70)
 
         return results
@@ -1196,7 +1224,8 @@ class PulsarPINN:
 
         for i in range(n_shuffles):
             if verbose and (i + 1) % max(1, n_shuffles // 10) == 0:
-                print(f"  Shuffle {i + 1}/{n_shuffles}...")
+                progress_pct = ((i + 1) / n_shuffles) * 100
+                print(f"  Shuffle [{i+1:,}/{n_shuffles:,}] {progress_pct:6.2f}%")
 
             # Randomly shuffle input features (breaks x-y relationship)
             shuffled_indices = np.random.permutation(len(self.x_train_torch))
@@ -1239,17 +1268,18 @@ class PulsarPINN:
             print("\n" + "=" * 70)
             print("FEATURE SHUFFLING TEST RESULTS")
             print("=" * 70)
-            print(f"\nReal model Rsquared:           {real_r2:.6f}")
-            print(f"Shuffled models Rsquared mean: {shuffled_mean:.6f} plus minus {shuffled_std:.6f}")
-            print(f"Improvement:             {r2_difference:.6f}")
-            print(f"Factor improvement:      {results['improvement_factor']:.2f}x")
-            
+            print(f"\nReal model Rsquared:           {real_r2:.8f}")
+            print(f"Shuffled models Rsquared mean: {shuffled_mean:.8f} +/- {shuffled_std:.8f}")
+            print(f"\nImprovement over shuffled: {r2_difference:.8f}")
+            print(f"Improvement factor:        {results['improvement_factor']:.2f}x")
+            print("\n" + "-" * 70)
+            print("ASSESSMENT:")
             if r2_difference > 0.1:
-                print("\n   PASSED: Real features significantly better than shuffled")
-                print("     Input features contain genuine information")
+                print("   [PASS] Real features significantly better than shuffled")
+                print("   Input features contain genuine information")
             else:
-                print("\n   WARNING: Real features not much better than shuffled")
-                print("     Features may not contain meaningful signal")
+                print("   [WARN] Real features not much better than shuffled")
+                print("   Features may not contain meaningful signal")
             print("=" * 70)
 
         return results
@@ -1356,20 +1386,21 @@ class PulsarPINN:
             print("\n" + "=" * 70)
             print("IMPOSSIBLE PHYSICS TEST RESULTS")
             print("=" * 70)
-            print(f"\nReal physics model:")
-            print(f"  Rsquared:   {real_r2:.6f}")
-            print(f"  Loss: {real_loss:.6e}")
-            print(f"\nImpossible physics model (swapped variables):")
-            print(f"  Rsquared:   {impossible_r2:.6f}")
-            print(f"  Loss: {impossible_loss:.6e}")
-            print(f"\nDifference: {r2_difference:.6f}")
-            
+            print(f"\nReal Physics Model:")
+            print(f"  Rsquared: {real_r2:.8f}")
+            print(f"  Loss:     {real_loss:.8e}")
+            print(f"\nImpossible Physics Model (Swapped Variables):")
+            print(f"  Rsquared: {impossible_r2:.8f}")
+            print(f"  Loss:     {impossible_loss:.8e}")
+            print(f"\nDifference: {r2_difference:.8f}")
+            print("\n" + "-" * 70)
+            print("ASSESSMENT:")
             if real_much_better:
-                print("\n   PASSED: Real physics significantly better than impossible")
-                print("     Model respects physical constraints")
+                print("   [PASS] Real physics significantly better than impossible")
+                print("   Model respects physical constraints")
             else:
-                print("\n    WARNING: Real physics not much better than impossible")
-                print("     Model may not be learning genuine physics")
+                print("   [WARN] Real physics not much better than impossible")
+                print("   Model may not be learning genuine physics")
             print("=" * 70)
 
         return results
@@ -1460,10 +1491,11 @@ class PulsarPINN:
             print("\n" + "=" * 70)
             print("OVERALL ROBUSTNESS ASSESSMENT")
             print("=" * 70)
-            print(f"\nPermutation test:      {' PASS' if permutation_results['is_significant'] else '  FAIL'}")
-            print(f"Feature shuffling:     {' PASS' if feature_results['r2_difference'] > 0.1 else '  FAIL'}")
-            print(f"Impossible physics:    {' PASS' if physics_results['real_much_better'] else '  FAIL'}")
-            print(f"\n{'='*70}")
+            print(f"\nTest Results:")
+            print(f"  Permutation test:      [PASS] {permutation_results['is_significant']}")
+            print(f"  Feature shuffling:     [PASS] {feature_results['r2_difference'] > 0.1}")
+            print(f"  Impossible physics:    [PASS] {physics_results['real_much_better']}")
+            print("\n" + "-" * 70)
             if all_tests_passed:
                 print("VERDICT: Model demonstrates robust learning of genuine physics")
                 print("         Safe to use for scientific inference")

@@ -128,7 +128,7 @@ class PulsarApproximation:
             self.r2_scores[degree] = score
 
             if verbose:
-                logger.info(f"Degree {degree} → R² Score: {score:.6f}")
+                logger.info(f"Degree {degree} -> R² Score: {score:.6f}")
 
             if score > best_score:
                 best_score = score
@@ -145,7 +145,7 @@ class PulsarApproximation:
         """
         Compute quantitative metrics for the fitted polynomial model.
         
-        Calculates RMSE, MAE, and reduced χ² to objectively assess model fit.
+        Calculates RMSE, MAE, and reduced chi-squared to objectively assess model fit.
         These metrics provide quantitative measures beyond visual comparison.
         
         Parameters
@@ -160,7 +160,7 @@ class PulsarApproximation:
             - 'r2': R² score (coefficient of determination)
             - 'rmse': Root Mean Squared Error
             - 'mae': Mean Absolute Error
-            - 'chi2_reduced': Reduced χ²
+            - 'chi2_reduced': Reduced chi-squared
             - 'n_samples': Number of data points
             - 'n_params': Number of model parameters
         
@@ -168,7 +168,8 @@ class PulsarApproximation:
         -----
         - RMSE penalizes larger errors more heavily than MAE
         - MAE gives equal weight to all errors
-        - Reduced χ² close to 1.0 indicates good fit
+        - Reduced chi-squared close to 1.0 indicates good fit
+        - Reduced chi-squared close to 1.0 indicates good fit
         - R² close to 1.0 indicates the model explains most variance
         """
         if self.model is None or self.predicted_y is None:
@@ -213,23 +214,23 @@ class PulsarApproximation:
             print(f"  R² Score:          {r2:.6f}")
             print(f"  RMSE:              {rmse:.6e}")
             print(f"  MAE:               {mae:.6e}")
-            print(f"  Reduced χ²:        {chi2_reduced:.6f}")
+            print(f"  Reduced chi-squared:        {chi2_reduced:.6f}")
             
             print(f"\n" + "-"*70)
             print("METRIC INTERPRETATION:")
             print(f"  • R² (Coefficient of Determination): {r2:.4f}")
-            print(f"    → Model explains {100*r2:.2f}% of the variance in the data")
+            print(f"    - Model explains {100*r2:.2f}% of the variance in the data")
             print(f"  • RMSE (Root Mean Squared Error): {rmse:.6e}")
-            print(f"    → Average prediction error (penalizes large deviations)")
+            print(f"    - Average prediction error (penalizes large deviations)")
             print(f"  • MAE (Mean Absolute Error): {mae:.6e}")
-            print(f"    → Average absolute prediction error")
-            print(f"  • Reduced χ²: {chi2_reduced:.4f}")
+            print(f"    - Average absolute prediction error")
+            print(f"  • Reduced chi-squared: {chi2_reduced:.4f}")
             if chi2_reduced < 0.5:
-                print(f"    → Model may be overfitting (χ² too low)")
+                print(f"    - Model may be overfitting (chi-squared too low)")
             elif chi2_reduced > 2.0:
-                print(f"    → Model may be underfitting or systematic errors present")
+                print(f"    - Model may be underfitting or systematic errors present")
             else:
-                print(f"    → Good model fit achieved")
+                print(f"    - Good model fit achieved")
             print("-"*70)
             print("="*70)
         

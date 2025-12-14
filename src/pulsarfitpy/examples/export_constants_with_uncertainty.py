@@ -153,10 +153,10 @@ for _, row in df2.iterrows():
     ci_upper = row['ci_upper_95']
     
     print(f"\n{name}:")
-    print(f"  Value ± Uncertainty:  {value:.4f} ± {std:.4f}")
+    print(f"  Value +/- Uncertainty:  {value:.4f} +/- {std:.4f}")
     print(f"  95% Confidence Interval: [{ci_lower:.4f}, {ci_upper:.4f}]")
     print(f"\n  Plain text for paper:")
-    print(f"  {name} = {value:.4f} ± {std:.4f} (95% CI: [{ci_lower:.4f}, {ci_upper:.4f}])")
+    print(f"  {name} = {value:.4f} +/- {std:.4f} (95% CI: [{ci_lower:.4f}, {ci_upper:.4f}])")
     print(f"\n  LaTeX format:")
     print(f"  ${name} = {value:.4f} \\pm {std:.4f}$")
     print(f"  ${name} \\in [{ci_lower:.4f}, {ci_upper:.4f}]$ (95\\% CI)")

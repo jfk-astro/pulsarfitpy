@@ -198,7 +198,7 @@ class DeepXDEBackend(_PINNBackend):
             xmax=[x_range[1], y_range[1]]
         )
         
-        print(f"Geometry defined: [{x_range[0]}, {x_range[1]}] × [{y_range[0]}, {y_range[1]}]")
+        print(f"Geometry defined: [{x_range[0]}, {x_range[1]}] x [{y_range[0]}, {y_range[1]}]")
     
     def add_boundary_condition(self, bc_func: Callable, 
                               on_boundary: Callable = None) -> None:
@@ -263,7 +263,7 @@ class DeepXDEBackend(_PINNBackend):
             du_yy = self.dde.grad.hessian(u, x, i=1, j=1)
             
             # Example: Poisson/Laplace equation
-            # For ∇²u = f, return: du_xx + du_yy - f
+            # For Laplacian(u) = f, return: du_xx + du_yy - f
             # Modify this based on your specific PDE
             return du_xx + du_yy
         

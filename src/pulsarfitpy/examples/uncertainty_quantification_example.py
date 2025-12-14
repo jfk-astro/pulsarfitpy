@@ -101,7 +101,7 @@ print("=" * 80)
 
 learned_constants = pinn.store_learned_constants()
 print(f"\nLearned constant: logR = {learned_constants['logR']:.6f}")
-print(f"Physical interpretation: R ≈ 10^{learned_constants['logR']:.2f} cm")
+print(f"Physical interpretation: R = 10^{learned_constants['logR']:.2f} cm")
 
 # =============================================================================
 # STEP 5: Bootstrap Uncertainty Analysis
@@ -150,12 +150,12 @@ for const_name in learned_constants.keys():
     print(f"\n{const_name}:")
     print(f"  Point estimate:        {learned_constants[const_name]:.6f}")
     print(f"\n  Bootstrap method:")
-    print(f"    Mean ± Std:          {bootstrap_results[const_name]['mean']:.6f} ± {bootstrap_results[const_name]['std']:.6f}")
+    print(f"    Mean +/- Std:          {bootstrap_results[const_name]['mean']:.6f} +/- {bootstrap_results[const_name]['std']:.6f}")
     print(f"    95% CI:              [{bootstrap_results[const_name]['ci_lower']:.6f}, {bootstrap_results[const_name]['ci_upper']:.6f}]")
     print(f"    CI width:            {bootstrap_results[const_name]['ci_upper'] - bootstrap_results[const_name]['ci_lower']:.6f}")
     
     print(f"\n  Monte Carlo method:")
-    print(f"    Mean ± Std:          {mc_results[const_name]['mean']:.6f} ± {mc_results[const_name]['std']:.6f}")
+    print(f"    Mean +/- Std:          {mc_results[const_name]['mean']:.6f} +/- {mc_results[const_name]['std']:.6f}")
     print(f"    95% CI:              [{mc_results[const_name]['ci_lower']:.6f}, {mc_results[const_name]['ci_upper']:.6f}]")
     print(f"    CI width:            {mc_results[const_name]['ci_upper'] - mc_results[const_name]['ci_lower']:.6f}")
 
@@ -175,7 +175,7 @@ for const_name in learned_constants.keys():
     
     print(f"\n{const_name}:")
     print(f"  Value (bootstrap mean):  {boot_mean:.6f}")
-    print(f"  Uncertainty (std):       ±{boot_std:.6f}")
+    print(f"  Uncertainty (std):       +/-{boot_std:.6f}")
     print(f"  95% Confidence Interval: [{boot_lower:.6f}, {boot_upper:.6f}]")
     print(f"\n  LaTeX format:")
     print(f"  {const_name} = {boot_mean:.3f} \\pm {boot_std:.3f}")
@@ -194,7 +194,7 @@ print("""
   * Model sensitivity to initialization
   
 - For publication, report:
-  * Point estimate with uncertainty: value ± std
+  * Point estimate with uncertainty: value +/- std
   * 95% confidence interval
   * Method used (bootstrap or Monte Carlo)
   * Number of iterations performed

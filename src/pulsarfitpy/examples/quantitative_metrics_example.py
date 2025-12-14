@@ -1,7 +1,7 @@
 """
 Example demonstrating quantitative metrics for objective model assessment.
 
-This script shows how to use RMSE, MAE, and reduced χ² metrics to objectively
+This script shows how to use RMSE, MAE, and reduced chi-squared metrics to objectively
 assess model fit, going beyond visual comparison alone.
 """
 
@@ -17,7 +17,7 @@ print("=" * 80)
 print("\nThis example demonstrates objective model assessment using:")
 print("  • RMSE (Root Mean Squared Error)")
 print("  • MAE (Mean Absolute Error)")
-print("  • Reduced χ² (Chi-Squared)")
+print("  • Reduced chi-squared (Chi-Squared)")
 print("  • R² (Coefficient of Determination)")
 print("=" * 80)
 
@@ -224,13 +224,13 @@ print("\nPINN Model (Test Set):")
 print(f"  R² Score:        {metrics['test_r2']:.6f}")
 print(f"  RMSE:            {metrics['test_rmse']:.6e}")
 print(f"  MAE:             {metrics['test_mae']:.6e}")
-print(f"  Reduced χ²:      {metrics['test_chi2_reduced']:.6f}")
+print(f"  Reduced chi-squared:      {metrics['test_chi2_reduced']:.6f}")
 
 print("\nPolynomial Model:")
 print(f"  R² Score:        {poly_metrics['r2']:.6f}")
 print(f"  RMSE:            {poly_metrics['rmse']:.6e}")
 print(f"  MAE:             {poly_metrics['mae']:.6e}")
-print(f"  Reduced χ²:      {poly_metrics['chi2_reduced']:.6f}")
+print(f"  Reduced chi-squared:      {poly_metrics['chi2_reduced']:.6f}")
 
 print("\n" + "=" * 80)
 print("INTERPRETATION GUIDE:")
@@ -253,7 +253,7 @@ print(
   - More robust to outliers than RMSE
   - Lower values indicate better fit
 
-• Reduced χ² (Chi-Squared):
+• Reduced chi-squared (Chi-Squared):
   - Goodness-of-fit measure normalized by degrees of freedom
   - Values close to 1.0 indicate good fit
   - < 0.5: possible overfitting

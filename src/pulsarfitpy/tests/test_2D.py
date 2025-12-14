@@ -37,8 +37,8 @@ Main demonstration function showing all visualization capabilities.
 
 print("\n" + "="*90)
 print("PulsarPINN2D - Enhanced Visualization Demonstration")
-print("Solving 2D Poisson Equation: ∇²u = -1")
-print("Domain: [0,1] × [0,1] with u = 0 on boundary")
+print("Solving 2D Poisson Equation: Laplacian(u) = -1")
+print("Domain: [0,1] x [0,1] with u = 0 on boundary")
 print("="*90 + "\n")
 
 # ========================================================================
@@ -48,12 +48,12 @@ print("="*90 + "\n")
 print("Step 1: Defining PDE symbolically...")
 x, y, u = sp.symbols('x y u')
 
-# Poisson equation: ∇²u + 1 = 0
-# This represents: d²u/dx² + d²u/dy² + 1 = 0
+# Poisson equation: Laplacian(u) + 1 = 0
+# This represents: d2u/dx2 + d2u/dy2 + 1 = 0
 poisson_eq = sp.diff(u, x, 2) + sp.diff(u, y, 2) + 1
 
 print(f"  PDE: {poisson_eq} = 0")
-print(f"  Boundary condition: u = 0 on ∂Ω")
+print(f"  Boundary condition: u = 0 on domain boundary")
 print()
 
 # ========================================================================
@@ -68,7 +68,7 @@ n_interior = 400  # Interior collocation points
 print(f"  - Boundary points: {4 * n_boundary}")
 print(f"  - Interior points: {n_interior}")
 
-# Create boundary of unit square [0,1] × [0,1]
+# Create boundary of unit square [0,1] x [0,1]
 boundary_x = np.concatenate([
     np.linspace(0, 1, n_boundary),  # bottom edge (y=0)
     np.ones(n_boundary),             # right edge (x=1)
@@ -88,7 +88,7 @@ boundary_values = np.zeros(len(boundary_x))  # u = 0 on boundary
 np.random.seed(42)  # For reproducibility
 interior_points = np.random.rand(n_interior, 2)
 
-print("  ✓ Training data generated\n")
+print("  [OK] Training data generated\n")
 
 # ========================================================================
 # STEP 3: Initialize PINN
@@ -124,7 +124,7 @@ metrics = pinn.train(
     callback_interval=500     # Print metrics every 500 epochs
 )
 
-print("\n✓ Training complete!")
+print("\n[OK] Training complete!")
 
 # Display training summary
 summary = pinn.get_metrics_summary()
@@ -162,14 +162,14 @@ fig1 = pinn.plot_loss_history(
     separate_losses=True,
     savefig='loss_history.png'  # Optional: save to file
 )
-print("   ✓ Loss history plotted")
+print("   [OK] Loss history plotted")
 
 # 2. Convergence rate analysis
 print("2. Analyzing convergence rate...")
 fig2 = pinn.plot_convergence_rate(
     savefig='convergence_rate.png'
 )
-print("   ✓ Convergence analysis complete")
+print("   [OK] Convergence analysis complete")
 
 # 3. 2D solution contour plot
 print("3. Plotting 2D solution...")
@@ -179,7 +179,7 @@ fig3 = pinn.plot_solution_2d(
     colormap='viridis',
     savefig='solution_2d.png'
 )
-print("   ✓ 2D solution plotted")
+print("   [OK] 2D solution plotted")
 
 # 4. 3D surface plot
 print("4. Plotting 3D solution...")
@@ -190,7 +190,7 @@ fig4 = pinn.plot_solution_3d(
     colormap='viridis',
     savefig='solution_3d.png'
 )
-print("   ✓ 3D solution plotted")
+print("   [OK] 3D solution plotted")
 
 # 5. PDE residual distribution
 print("5. Analyzing PDE residuals...")
@@ -198,7 +198,7 @@ fig5 = pinn.plot_residual_distribution(
     resolution=80,
     savefig='residuals.png'
 )
-print("   ✓ Residual analysis complete")
+print("   [OK] Residual analysis complete")
 
 # 6. Comparison with analytical solution
 print("6. Comparing with analytical solution...")
@@ -207,7 +207,7 @@ def analytical_poisson(X, Y):
     """
     Approximate analytical solution for 2D Poisson equation.
     
-    For ∇²u = -1 with u = 0 on boundary of unit square,
+    For Laplacian(u) = -1 with u = 0 on boundary of unit square,
     this is an approximation using separation of variables.
     """
     # Simplified approximation (not exact)
@@ -218,7 +218,7 @@ fig6 = pinn.plot_comparison_with_analytical(
     resolution=80,
     savefig='comparison.png'
 )
-print("   ✓ Comparison complete")
+print("   [OK] Comparison complete")
 
 # 7. Comprehensive report (all-in-one dashboard)
 print("7. Generating comprehensive report...")
@@ -226,7 +226,7 @@ fig7 = pinn.create_comprehensive_report(
     resolution=80,
     savefig='comprehensive_report.png'
 )
-print("   ✓ Comprehensive report generated")
+print("   [OK] Comprehensive report generated")
 
 # ========================================================================
 # STEP 6: Additional analysis
@@ -237,7 +237,7 @@ print("Additional Analysis")
 print("="*90 + "\n")
 
 # Test predictions on a specific grid
-print("Testing predictions on a 10×10 grid...")
+print("Testing predictions on a 10x10 grid...")
 x_test = np.linspace(0, 1, 10)
 y_test = np.linspace(0, 1, 10)
 X_test, Y_test = np.meshgrid(x_test, y_test)
@@ -253,9 +253,9 @@ print(f"  Std deviation: {predictions.std():.6f}")
 print("\nSaving trained model...")
 try:
     pinn.save_model('trained_pinn_model.pt')
-    print("  ✓ Model saved to 'trained_pinn_model.pt'")
+    print("  [OK] Model saved to 'trained_pinn_model.pt'")
 except Exception as e:
-    print(f"  ⚠ Could not save model: {e}")
+    print(f"  [WARN] Could not save model: {e}")
 
 # ========================================================================
 # STEP 7: Display all plots
@@ -339,4 +339,4 @@ def quick_test():
 
     plt.show()
 
-    print("\n✓ Quick test complete!")
+    print("\n[OK] Quick test complete!")
