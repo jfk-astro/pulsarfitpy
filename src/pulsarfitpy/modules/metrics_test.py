@@ -21,7 +21,7 @@ query = QueryATNF(params=['P0', 'P1', 'ASSOC'])
 query_table = query.table
 
 # Extract valid data: filter out pulsars with missing P0 or P1 values
-valid_mask = (query_table['P0'].mask) & (query_table['P1'].mask)
+valid_mask = (~query_table['P0'].mask) & (~query_table['P1'].mask)
 P = query_table['P0'][valid_mask].data  # Period in seconds
 Pdot = query_table['P1'][valid_mask].data  # Period derivative (s/s)
 
