@@ -118,7 +118,7 @@ python src/pulsarfitpy/src/pulsarfitpy/gui.py
 
 ## **Next Steps**
 
-- Read the [Technical Information](quickstart.md)
+- Read the [Technical Information](technicalinformation.md)
 - Explore [Examples](examples.md)
 - Check out the Jupyter notebooks in `src/pulsarfitpy/docs/`
 

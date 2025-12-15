@@ -22,7 +22,7 @@ Learn more about pulsarfitpy in the guides below.
 
 ### Guides 
 - [Installation and Setup](installation.md)
-- [Technical Overview](quickstart.md)
+- [Technical Information](technicalinformation.md)
 - [Examples](examples.md)
 
 ### Other Links
