@@ -178,6 +178,8 @@ A typical case for visualizing PINN results can be used for a braking index mode
 
 **1. Train the PINN model:**
 ```python
+from pulsarfitpy import PulsarPINN
+
 pinn = PulsarPINN(
     differential_eq=differential_equation,
     x_sym=logP,
@@ -195,7 +197,7 @@ metrics = pinn.evaluate_test_set(verbose=True)
 
 **3. Initialize the visualization class:**
 ```python
-from visualize_solutions import VisualizePINN
+from pulsarfitpy import VisualizePINN
 visualizer = VisualizePINN(pinn)
 ```
 

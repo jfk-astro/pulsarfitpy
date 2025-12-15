@@ -131,6 +131,8 @@ A typical workflow for exporting PINN results follows this sequence:
 **1. Train the PINN model:**
 
 ```python
+from pulsarfitpy import PulsarPINN
+
 pinn = PulsarPINN(
     differential_eq=differential_equation,
     x_sym=logP,
@@ -150,7 +152,7 @@ metrics = pinn.evaluate_test_set(verbose=True)
 **3. Initialize the export class:**
 
 ```python
-from export_solutions import ExportPINN
+from pulsarfitpy import ExportPINN
 exporter = ExportPINN(pinn)
 ```
 

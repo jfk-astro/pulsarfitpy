@@ -27,7 +27,6 @@ Date: December 2025
 
 import numpy as np
 import sympy as sp
-# Confirm if this is going to be the correct import for the thing.
 from pulsarfitpy import PulsarPINN, VisualizePINN, ExportPINN
 from psrqpy import QueryATNF
 ```
@@ -213,7 +212,7 @@ visualizer.plot_predictions_vs_data(
     title='P-dP/dt Diagram: Pulsar Spindown Analysis (ATNF Data)'
 )
 ```
-![Predictions vs Data Graph](./images/Prediction%20Accuracy.png)
+![Predictions vs Data Graph](./images/Pulsar%20Spindown%20Graph.png)
 
 ```python
 # Plot 2: Training and Validation Loss Curves
@@ -231,7 +230,7 @@ visualizer.plot_residuals_analysis()
 # Plot 4: Prediction Scatter Plot
 visualizer.plot_prediction_scatter()
 ```
-![Prediction Scatter](./images/Pulsar%20Spindown%20Graph.png)
+![Prediction Scatter](./images/Prediction%20Accuracy.png)
 
 ```python
 # Plot 5: Braking Index Distribution
