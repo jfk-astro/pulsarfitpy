@@ -17,6 +17,8 @@ pulsarfitpy offers the following features:
 - 1D PINN Support
 - 2D PINN Support
 - Python Library, Command Line Interface, and Graphical User Interface Options
+- Real Time Error Metrics
+- Customizable Neural Network
 
 Learn more about pulsarfitpy in the guides below.  
 
