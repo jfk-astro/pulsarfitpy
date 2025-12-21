@@ -14,7 +14,7 @@ Below are the guides to the different features of pulsarfitpy.
 
 ## **Next Steps**
 
-- Explore [Examples](examples.md)
+- Explore [Examples](examplehub.md)
 - Check out the Jupyter notebooks in `src/pulsarfitpy/docs/`
 
 [← Back to Home](index.md)

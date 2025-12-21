@@ -3,7 +3,7 @@ layout: default
 title: pulsarfitpy
 ---
 
-# **Examples**
+# **1D Example**
 
 <!-- Below, we sample a scientifically accepted formula cited by [Belvedere](https://iopscience.iop.org/article/10.1088/0004-637X/799/1/23) and many other studies regarding the surface magnetic field $B$, period $P$, and period derivative $\dot P$, as shown here:
 
@@ -364,4 +364,4 @@ For further analysis of pulsar properties, see the [ATNF Pulsar Parameter List](
 - Explore the [Technical Information](technicalinformation.md)
 - Check out the Jupyter notebooks in `src/pulsarfitpy/docs/`
 
-[← Back to Home](index.md)
+[← Back to Examples Home](examplehub.md)

@@ -25,7 +25,7 @@ Learn more about pulsarfitpy in the guides below.
 ### Guides 
 - [Installation and Setup](installation.md)
 - [Technical Information](technicalinformation.md)
-- [Examples](examples.md)
+- [Examples](examplehub.md)
 
 ### Other Links
 - [GitHub Repository](https://github.com/jfk-astro/pulsarfitpy)
