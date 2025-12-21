@@ -7,7 +7,8 @@ title: pulsarfitpy
 
 Below are the guides to the different features of pulsarfitpy.
 
-* [The PulsarPINN Class](quickstart.md)
+* [The 1D PulsarPINN Guide](quickstart.md)
+* [The 2D PulsarPINN Guide](2dguide.md)
 * [Exporting Solutions](exporting.md)
 * [Visualizing Results](visualizing.md)
 
