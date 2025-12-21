@@ -17,9 +17,18 @@ logger = logging.getLogger(__name__)
 
 class ExportPINN:
     """
-    CSV export class for PulsarPINN models.
+    Export class for PulsarPINN models.
     
-    Provides methods to export predictions, metadata, and raw data to CSV files.
+    Provides methods to export predictions, metrics, learned constants, and model
+    checkpoints to CSV files and PyTorch checkpoint files. This enables full
+    reproducibility and model persistence for trained PINN models.
+    
+    Available export methods:
+    - save_predictions_to_csv(): Export model predictions and metadata to CSV
+    - save_learned_constants_to_csv(): Export learned physical constants to CSV
+    - save_metrics_to_csv(): Export training metrics to CSV
+    - save_loss_history_to_csv(): Export training loss history to CSV
+    - save_model_checkpoint(): Export trained model to PyTorch checkpoint file
     """
     
     def __init__(self, pinn_model):
@@ -484,3 +493,92 @@ class ExportPINN:
 
         logger.info(f"Loss history saved to {filepath}")
         logger.info(f"  - Number of epochs: {len(epochs)}")
+
+    def save_model_checkpoint(
+        self,
+        filepath: str,
+        include_metadata: bool = True,
+    ) -> None:
+        """
+        Save the trained PINN model to a PyTorch checkpoint file.
+
+        This method saves the complete model state including neural network
+        weights, learned physical constants, and training history for later
+        inference or continued training.
+
+        -------------------------------------------------------------------
+                                    PARAMETERS
+        -------------------------------------------------------------------
+        - filepath : str
+            Output checkpoint file path. Should have .pt extension.
+            Parent directories will be created if needed.
+
+        - include_metadata : bool
+            If True, includes training loss history and test metrics in the
+            checkpoint. Default: True.
+
+        -------------------------------------------------------------------
+                                     RETURNS
+        -------------------------------------------------------------------
+        None
+            Writes PyTorch checkpoint file to specified filepath.
+
+        -------------------------------------------------------------------
+                                      NOTES
+        -------------------------------------------------------------------
+        Checkpoint Contents:
+        - model_state_dict: Neural network weights and biases
+        - learnable_params: Learned physical constants
+        - loss_log: Training loss history (if include_metadata=True)
+        - test_metrics: Test set evaluation metrics (if include_metadata=True)
+        - hyperparameters: Model architecture and training configuration
+        """
+
+        import torch
+
+        # Create output directory if needed
+        filepath_obj = Path(filepath)
+        filepath_obj.parent.mkdir(parents=True, exist_ok=True)
+
+        # Ensure .pt extension
+        if not str(filepath).endswith('.pt'):
+            filepath = str(filepath) + '.pt'
+
+        # Prepare checkpoint dictionary
+        checkpoint = {
+            'model_state_dict': self.pinn.model.state_dict(),
+            'learnable_params': {
+                name: param.data.cpu().detach().numpy()
+                for name, param in self.pinn.learnable_params.items()
+            },
+        }
+
+        # Include metadata if requested
+        if include_metadata:
+            checkpoint['loss_log'] = self.pinn.loss_log
+            checkpoint['test_metrics'] = self.pinn.test_metrics
+            checkpoint['hyperparameters'] = {
+                'input_layer': self.pinn.input_layer,
+                'hidden_layers': self.pinn.hidden_layers,
+                'output_layer': self.pinn.output_layer,
+                'train_split': self.pinn.train_split,
+                'val_split': self.pinn.val_split,
+                'test_split': self.pinn.test_split,
+                'random_seed': self.pinn.random_seed,
+                'log_scale': self.pinn.log_scale,
+            }
+            checkpoint['model_info'] = {
+                'x_sym': str(self.pinn.x_sym),
+                'y_sym': str(self.pinn.y_sym),
+                'differential_eq': str(self.pinn.differential_eq),
+            }
+
+        # Save checkpoint
+        torch.save(checkpoint, filepath)
+
+        logger.info(f"Model checkpoint saved to {filepath}")
+        logger.info(f"  - Model parameters: {sum(p.numel() for p in self.pinn.model.parameters())}")
+        logger.info(f"  - Learned constants: {len(self.pinn.learnable_params)}")
+        if include_metadata:
+            logger.info(f"  - Training epochs: {len(self.pinn.loss_log['total'])}")
+            logger.info(f"  - Test metrics: {len(self.pinn.test_metrics)}")

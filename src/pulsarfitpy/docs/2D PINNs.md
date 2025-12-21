@@ -404,6 +404,57 @@ Both backends use a TrainingMetrics dataclass to record training progress. Each 
 - initial_loss: Initial condition loss (if applicable)
 - elapsed_time: Cumulative training time in seconds
 
+# Exporting Trained Models
+
+The pulsarfitpy framework provides comprehensive export functionality through the PINNSolutionExporter class. This allows you to save training results and persist trained models for future use.
+
+Key export methods:
+
+1. .save_predictions_to_csv(filepath):
+
+Exports model predictions on training, validation, and test sets to a CSV file with input-output pairs and model evaluations.
+
+Inputs:
+
+- filepath [str]: Path and filename for the output CSV file
+
+2. .save_learned_constants_to_csv(filepath):
+
+Saves the learned physical constants from the trained model to a CSV file with constant names and their optimized values.
+
+Inputs:
+
+- filepath [str]: Path and filename for the output CSV file
+
+3. .save_metrics_to_csv(filepath):
+
+Exports comprehensive evaluation metrics (R^2, RMSE, MAE, chi^2) for all data splits (train/val/test) to a CSV file.
+
+Inputs:
+
+- filepath [str]: Path and filename for the output CSV file
+
+4. .save_loss_history_to_csv(filepath):
+
+Saves the complete training loss history including total loss, physics loss, and data loss across all epochs to a CSV file.
+
+Inputs:
+
+- filepath [str]: Path and filename for the output CSV file
+
+5. .save_model_checkpoint(filepath, include_metadata=True):
+
+Saves the trained model state to a PyTorch checkpoint file (.pt) for later inference or continued training. This preserves the neural network weights, learned constants, and optionally includes training metadata.
+
+Inputs:
+
+- filepath [str]: Path and filename for the checkpoint file (typically .pt extension)
+- include_metadata [bool]: Whether to include loss history, metrics, and hyperparameters in the checkpoint. Default: True
+
+Outputs:
+
+- Checkpoint file containing: model state dictionary, learnable parameters, loss history, test metrics, and model metadata
+
 # Usage Notes
 
 The following practical guidance applies when using the 2D PINN framework:
