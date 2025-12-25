@@ -691,6 +691,52 @@ class PulsarPINN:
         """
         return {name: param.item() for name, param in self.learnable_params.items()}
 
+    def show_hyperparameters(self) -> None:
+        """
+        Display all model hyperparameters and configuration settings.
+
+        Prints a formatted summary of the PINN architecture, training configuration,
+        data splits, and learned constants to the terminal.
+        """
+        print("\n" + "=" * 80)
+        print("MODEL HYPERPARAMETERS AND CONFIGURATION")
+        print("=" * 80)
+
+        print("\nNeural Network Architecture:")
+        print("-" * 80)
+        print(f"  Input Layer:         {self.input_layer}")
+        print(f"  Hidden Layers:       {self.hidden_layers}")
+        print(f"  Output Layer:        {self.output_layer}")
+        total_params = sum(p.numel() for p in self.model.parameters())
+        print(f"  Total NN Parameters: {total_params:,}")
+
+        print("\nPhysics Configuration:")
+        print("-" * 80)
+        print(f"  Differential Equation: {self.differential_eq}")
+        print(f"  Input Variable (x):    {self.x_sym}")
+        print(f"  Output Variable (y):   {self.y_sym}")
+        print(f"  Log Scale:             {self.log_scale}")
+
+        print("\nLearnable Constants:")
+        print("-" * 80)
+        for name, param in self.learnable_params.items():
+            print(f"  {name}: {param.item():.6f}")
+
+        print("\nData Configuration:")
+        print("-" * 80)
+        print(f"  Total Samples:   {len(self.x_raw)}")
+        print(f"  Training Set:    {len(self.x_train)} ({self.train_split*100:.1f}%)")
+        print(f"  Validation Set:  {len(self.x_val)} ({self.val_split*100:.1f}%)")
+        print(f"  Test Set:        {len(self.x_test)} ({self.test_split*100:.1f}%)")
+        print(f"  Random Seed:     {self.random_seed}")
+
+        print("\nOptimizer Configuration:")
+        print("-" * 80)
+        print(f"  Optimizer Type:  {type(self.optimizer).__name__}")
+        print(f"  Learning Rate:   {self.optimizer.param_groups[0]['lr']:.6f}")
+
+        print("=" * 80 + "\n")
+
     def bootstrap_uncertainty(
         self,
         n_bootstrap: int = 100,
@@ -1402,6 +1448,217 @@ class PulsarPINN:
                 print("   [WARN] Real physics not much better than impossible")
                 print("   Model may not be learning genuine physics")
             print("=" * 70)
+
+        return results
+
+    # =========================================================================
+    # CROSS VALIDATION METHODS
+    # =========================================================================
+
+    def kfold_cross_validation(
+        self,
+        k: int = 5,
+        epochs: int = 2000,
+        physics_weight: float = 1.0,
+        data_weight: float = 1.0,
+        verbose: bool = True
+    ) -> Dict[str, any]:
+        """
+        Perform k-fold cross validation to assess model generalization.
+
+        Splits data into k folds and trains k separate models, using each fold
+        as validation once. Provides robust estimates of model performance.
+
+        -------------------------------------------------------------------
+                                    PARAMETERS
+        -------------------------------------------------------------------
+        - k : int
+            Number of folds for cross validation. Default: 5.
+
+        - epochs : int
+            Training epochs for each fold. Default: 2000.
+
+        - physics_weight : float
+            Weight for physics loss component. Default: 1.0.
+
+        - data_weight : float
+            Weight for data loss component. Default: 1.0.
+
+        - verbose : bool
+            Whether to print progress and results. Default: True.
+
+        -------------------------------------------------------------------
+                                     RETURNS
+        -------------------------------------------------------------------
+        - Dict[str, any]
+            Dictionary containing:
+            {
+                'fold_metrics': List of metrics for each fold,
+                'mean_r2': Mean R squared across folds,
+                'std_r2': Standard deviation of R squared,
+                'mean_rmse': Mean RMSE across folds,
+                'std_rmse': Standard deviation of RMSE,
+                'mean_mae': Mean MAE across folds,
+                'std_mae': Standard deviation of MAE,
+                'learned_constants': List of constants from each fold
+            }
+
+        -------------------------------------------------------------------
+                                      EXAMPLE
+        -------------------------------------------------------------------
+        >>> cv_results = pinn.kfold_cross_validation(k=5, epochs=2000)
+        >>> print(f"Mean R2: {cv_results['mean_r2']:.4f} +/- {cv_results['std_r2']:.4f}")
+        """
+        if verbose:
+            print("\n" + "=" * 80)
+            print("K-FOLD CROSS VALIDATION")
+            print("=" * 80)
+            print(f"Number of folds: {k}")
+            print(f"Epochs per fold: {epochs}")
+            print("=" * 80 + "\n")
+
+        # Store original model state
+        original_constants = self.store_learned_constants()
+        original_model_state = {k_param: v.clone() for k_param, v in self.model.state_dict().items()}
+
+        # Combine all data for k-fold splitting
+        x_all = self.x_raw
+        y_all = self.y_raw
+        n_samples = len(x_all)
+        fold_size = n_samples // k
+
+        # Create shuffled indices
+        np.random.seed(self.random_seed)
+        shuffled_indices = np.random.permutation(n_samples)
+
+        # Storage for results
+        fold_metrics = []
+        fold_constants = []
+
+        # Perform k-fold cross validation
+        for fold in range(k):
+            if verbose:
+                print(f"\nTraining Fold {fold + 1}/{k}...")
+                print("-" * 80)
+
+            # Determine validation indices for this fold
+            val_start = fold * fold_size
+            val_end = val_start + fold_size if fold < k - 1 else n_samples
+            val_indices = shuffled_indices[val_start:val_end]
+
+            # Training indices are all others
+            train_indices = np.concatenate([
+                shuffled_indices[:val_start],
+                shuffled_indices[val_end:]
+            ])
+
+            # Split data for this fold
+            x_train_fold = x_all[train_indices]
+            y_train_fold = y_all[train_indices]
+            x_val_fold = x_all[val_indices]
+            y_val_fold = y_all[val_indices]
+
+            # Convert to tensors
+            x_train_tensor = self._numpy_array_to_tensor(x_train_fold)
+            y_train_tensor = self._numpy_array_to_tensor(y_train_fold)
+            x_val_tensor = self._numpy_array_to_tensor(x_val_fold)
+            y_val_tensor = self._numpy_array_to_tensor(y_val_fold)
+
+            # Prepare fixed inputs for this fold
+            fixed_train_fold = {}
+            fixed_val_fold = {}
+            for symbol, data_array in self.fixed_inputs.items():
+                fixed_train_fold[str(symbol)] = self._numpy_array_to_tensor(data_array[train_indices])
+                fixed_val_fold[str(symbol)] = self._numpy_array_to_tensor(data_array[val_indices])
+
+            # Reinitialize model and constants
+            self._build_neural_network()
+            for name, init_val in self.learn_constants.items():
+                self.learnable_params[str(name)] = nn.Parameter(
+                    torch.tensor([init_val], dtype=torch.float64)
+                )
+
+            # Update optimizer
+            all_params = list(self.model.parameters()) + list(self.learnable_params.values())
+            self.optimizer = torch.optim.Adam(all_params, lr=1e-3)
+
+            # Train on this fold
+            for epoch in range(epochs):
+                self.model.train()
+                predicted_y = self.model(x_train_tensor)
+
+                physics_residual = self.physics_residual_fn(
+                    x_train_tensor, predicted_y, fixed_train_fold
+                )
+                loss_physics = torch.mean(physics_residual**2)
+                loss_data = torch.mean((predicted_y - y_train_tensor) ** 2)
+                loss_total = physics_weight * loss_physics + data_weight * loss_data
+
+                self.optimizer.zero_grad()
+                loss_total.backward()
+                self.optimizer.step()
+
+            # Evaluate on validation fold
+            self.model.eval()
+            with torch.no_grad():
+                pred_val = self.model(x_val_tensor)
+
+                # Calculate metrics
+                y_mean = torch.mean(y_val_tensor)
+                total_variance = torch.sum((y_val_tensor - y_mean) ** 2)
+                residual_variance = torch.sum((y_val_tensor - pred_val) ** 2)
+                r2 = 1 - (residual_variance / total_variance)
+                rmse = torch.sqrt(torch.mean((pred_val - y_val_tensor) ** 2))
+                mae = torch.mean(torch.abs(pred_val - y_val_tensor))
+
+                fold_metrics.append({
+                    'fold': fold + 1,
+                    'r2': r2.item(),
+                    'rmse': rmse.item(),
+                    'mae': mae.item()
+                })
+
+                fold_constants.append(self.store_learned_constants())
+
+                if verbose:
+                    print(f"  Validation R2:   {r2.item():.6f}")
+                    print(f"  Validation RMSE: {rmse.item():.6e}")
+                    print(f"  Validation MAE:  {mae.item():.6e}")
+                    print(f"  Learned constants: {fold_constants[-1]}")
+
+        # Restore original model state
+        self.model.load_state_dict(original_model_state)
+        self.set_learn_constants(original_constants)
+
+        # Compute aggregate statistics
+        r2_values = [m['r2'] for m in fold_metrics]
+        rmse_values = [m['rmse'] for m in fold_metrics]
+        mae_values = [m['mae'] for m in fold_metrics]
+
+        results = {
+            'fold_metrics': fold_metrics,
+            'mean_r2': np.mean(r2_values),
+            'std_r2': np.std(r2_values),
+            'mean_rmse': np.mean(rmse_values),
+            'std_rmse': np.std(rmse_values),
+            'mean_mae': np.mean(mae_values),
+            'std_mae': np.std(mae_values),
+            'learned_constants': fold_constants
+        }
+
+        if verbose:
+            print("\n" + "=" * 80)
+            print("K-FOLD CROSS VALIDATION RESULTS")
+            print("=" * 80)
+            print(f"\nMean R2:   {results['mean_r2']:.6f} +/- {results['std_r2']:.6f}")
+            print(f"Mean RMSE: {results['mean_rmse']:.6e} +/- {results['std_rmse']:.6e}")
+            print(f"Mean MAE:  {results['mean_mae']:.6e} +/- {results['std_mae']:.6e}")
+            print("\nLearned Constants Across Folds:")
+            print("-" * 80)
+            for const_name in fold_constants[0].keys():
+                const_values = [fc[const_name] for fc in fold_constants]
+                print(f"  {const_name}: {np.mean(const_values):.6f} +/- {np.std(const_values):.6f}")
+            print("=" * 80 + "\n")
 
         return results
 
