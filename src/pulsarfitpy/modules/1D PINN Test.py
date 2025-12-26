@@ -6,9 +6,8 @@ Date: December 2025
 
 import numpy as np
 import sympy as sp
+import matplotlib.pyplot as plt
 from pinn import PulsarPINN
-from pinn_visualizer import VisualizePINN
-from export_solutions import ExportPINN
 from psrqpy import QueryATNF
 
 query = QueryATNF(params=['P0', 'P1', 'ASSOC'], condition='P0 < 0.03')
@@ -43,13 +42,13 @@ pinn = PulsarPINN(
     x_sym=logP,
     y_sym=logPdot,
     learn_constants={
-        n_braking: 2.1,
+        n_braking: 3.0,
         logK: -16.0
     },
     fixed_inputs=fixed_inputs,
     log_scale=True,
     input_layer=1,
-    hidden_layers=[64, 32],
+    hidden_layers=[64, 64, 32],
     output_layer=1,
     train_split=0.70,
     val_split=0.15,
@@ -59,8 +58,48 @@ pinn = PulsarPINN(
 
 pinn.show_hyperparameters()
 
+# Hyperparameters table
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.axis('off')
+hyperparams = [
+    ['Parameter', 'Value'],
+    ['Neural Network Architecture', f'{pinn.input_layer} → {pinn.hidden_layers} → {pinn.output_layer}'],
+    ['Total NN Parameters', f'{sum(p.numel() for p in pinn.model.parameters()):,}'],
+    ['Training Epochs', '10,000'],
+    ['Training Split', f'{pinn.train_split*100:.0f}%'],
+    ['Validation Split', f'{pinn.val_split*100:.0f}%'],
+    ['Test Split', f'{pinn.test_split*100:.0f}%'],
+    ['Total Samples', f'{len(log_P)}'],
+    ['Training Samples', f'{len(pinn.x_train)}'],
+    ['Validation Samples', f'{len(pinn.x_val)}'],
+    ['Test Samples', f'{len(pinn.x_test)}'],
+    ['Optimizer', 'Adam'],
+    ['Learning Rate', '0.001'],
+    ['Physics Weight', '1.0'],
+    ['Data Weight', '1.0'],
+    ['Random Seed', '42'],
+    ['Differential Equation', str(differential_equation)],
+    ['Learned Constants', 'n_braking (init: 3.0), logK (init: -16.0)']
+]
+table = ax.table(cellText=hyperparams, cellLoc='left', loc='center', colWidths=[0.4, 0.6])
+table.auto_set_font_size(False)
+table.set_fontsize(10)
+table.scale(1, 2)
+for i in range(len(hyperparams)):
+    if i == 0:
+        table[(i, 0)].set_facecolor('#4472C4')
+        table[(i, 1)].set_facecolor('#4472C4')
+        table[(i, 0)].set_text_props(weight='bold', color='white')
+        table[(i, 1)].set_text_props(weight='bold', color='white')
+    else:
+        table[(i, 0)].set_facecolor('#D9E2F3')
+        table[(i, 1)].set_facecolor('#F2F2F2')
+ax.set_title('Model Hyperparameters and Configuration', fontsize=14, pad=20)
+plt.tight_layout()
+plt.show()
+
 pinn.train(
-    epochs=6000,
+    epochs=10000,
     training_reports=600,
     physics_weight=1.0,
     data_weight=1.0
@@ -109,66 +148,35 @@ cv_results_10fold = pinn.kfold_cross_validation(
     verbose=True
 )
 
-visualizer = VisualizePINN(pinn)
+# Predictions vs data
+x_extended, y_pred_extended = pinn.predict_extended(extend=0.2, n_points=500)
+fig, ax = plt.subplots(figsize=(6, 6))
+ax.scatter(pinn.x_test, pinn.y_test, color='cornflowerblue', alpha=0.6, s=30, label='Test Data', edgecolors='none')
+ax.scatter(pinn.x_train, pinn.y_train, color='lightsteelblue', alpha=0.4, s=20, label='Training Data', edgecolors='none')
+ax.plot(x_extended, y_pred_extended, linewidth=2, label='PINN Model #3 (Our Work)')
+ax.set_xlabel('log(P) [log(s)]', fontsize=12)
+ax.set_ylabel('log(dP/dt) [log(s/s)]', fontsize=12)
+ax.set_title('Period Derivative vs. Period - PINN Model #3', fontsize=14)
+ax.legend(fontsize=10)
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.show()
 
-visualizer.plot_predictions_vs_data(
-    x_axis='log(P) [Period in seconds]',
-    y_axis='log(dP/dt) [Period Derivative]',
-    title='P-dP/dt Diagram: Millisecond Pulsar Spindown (ATNF Data)'
-)
-
-visualizer.plot_loss_curves(log_scale=True)
-visualizer.plot_residuals_analysis()
-visualizer.plot_prediction_scatter()
-
-visualizer.plot_braking_index_distribution(
-    learned_constants=learned_constants,
-    uncertainties=uncertainties
-)
-
-visualizer.plot_uncertainty_quantification(uncertainties=uncertainties)
-visualizer.plot_robustness_validation(robustness_results=robustness_results)
-
-exporter = ExportPINN(pinn)
-
-exporter.save_predictions_to_csv(
-    filepath='data/outputs/pinn_predictions.csv',
-    x_value_name='log_period',
-    y_value_name='log_period_derivative',
-    include_raw_data=True,
-    include_test_metrics=True,
-    additional_metadata={
-        'model_type': 'Millisecond Pulsar Spindown PINN',
-        'data_source': 'ATNF Pulsar Catalog',
-        'n_pulsars_used': len(log_P)
-    }
-)
-
-exporter.save_learned_constants_to_csv(
-    filepath='data/outputs/learned_constants.csv',
-    include_uncertainty=True,
-    uncertainty_method='bootstrap',
-    n_iterations=50,
-    additional_info={
-        'model': 'pulsar_spindown',
-        'equation': str(differential_equation),
-        'training_epochs': 6000
-    }
-)
-
-exporter.save_metrics_to_csv(
-    filepath='data/outputs/evaluation_metrics.csv',
-    additional_info={
-        'test_set_size': len(pinn.x_test),
-        'train_set_size': len(pinn.x_train),
-        'val_set_size': len(pinn.x_val),
-        'total_samples': len(log_P)
-    }
-)
-
-exporter.save_loss_history_to_csv(
-    filepath='data/outputs/loss_history.csv'
-)
+# Loss curves
+fig, ax = plt.subplots(figsize=(6, 6))
+epochs = np.arange(len(pinn.loss_log['total']))
+ax.plot(epochs, pinn.loss_log['total'], label='Total Loss', linewidth=1.5)
+ax.plot(epochs, pinn.loss_log['physics'], label='Physics Loss', linewidth=1.5)
+ax.plot(epochs, pinn.loss_log['data'], label='Data Loss', linewidth=1.5)
+ax.set_xlabel('Epoch', fontsize=12)
+ax.set_ylabel('Loss', fontsize=12)
+ax.set_yscale('log')
+ax.set_ylim(bottom=None, top=100000)
+ax.set_title('PINN Loss vs. Epoch Curves - Model #3', fontsize=14)
+ax.legend(fontsize=10)
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.show()
 
 print("\n" + "=" * 80)
 print("FINAL SUMMARY")
