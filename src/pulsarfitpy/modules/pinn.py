@@ -14,6 +14,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import sympy as sp
+import shutil
+import sys
 from typing import Dict, List, Optional, Tuple
 import logging
 
@@ -344,6 +346,115 @@ class PulsarPINN:
         # Store residual function to be used during training
         self.physics_residual_fn = residual_fn
 
+    def _truncate_for_terminal(self, text: str, max_length: int) -> str:
+        """Trim text so a live report line stays within the terminal width."""
+        if max_length <= 0:
+            return ""
+        if len(text) <= max_length:
+            return text
+        if max_length <= 3:
+            return "." * max_length
+        return text[: max_length - 3] + "..."
+
+    def _format_training_status_lines(
+        self,
+        epoch: int,
+        epochs: int,
+        train_loss: Dict[str, float],
+        val_loss: Optional[Dict[str, float]] = None,
+    ) -> List[str]:
+        """Build the original multi-line training report as a reusable block."""
+
+        terminal_width = shutil.get_terminal_size(fallback=(120, 20)).columns
+        separator = self._truncate_for_terminal("-" * 80, terminal_width)
+        progress_pct = ((epoch + 1) / epochs) * 100
+
+        lines = [
+            self._truncate_for_terminal(
+                f"Epoch [{epoch + 1:,}/{epochs:,}] {progress_pct:6.2f}%",
+                terminal_width,
+            ),
+            separator,
+            self._truncate_for_terminal(
+                f"  Train Loss | Total: {train_loss['total']:12.6e} | Physics: {train_loss['physics']:12.6e} | Data: {train_loss['data']:12.6e}",
+                terminal_width,
+            ),
+        ]
+
+        if val_loss is not None:
+            lines.append(
+                self._truncate_for_terminal(
+                    f"  Val Loss   | Total: {val_loss['total']:12.6e} | Physics: {val_loss['physics']:12.6e} | Data: {val_loss['data']:12.6e}",
+                    terminal_width,
+                )
+            )
+
+        lines.append("  Learned Constants:")
+        for name, param in self.learnable_params.items():
+            lines.append(
+                self._truncate_for_terminal(
+                    f"    {name:15s} = {param.item():12.8f}",
+                    terminal_width,
+                )
+            )
+        lines.append(separator)
+
+        return lines
+
+    def _write_training_status(
+        self,
+        lines: List[str],
+        previous_line_count: int = 0,
+        finalize: bool = False,
+    ) -> int:
+        """Rewrite the previous training block in place when the terminal supports it."""
+
+        if sys.stdout.isatty():
+            if previous_line_count:
+                for _ in range(previous_line_count):
+                    sys.stdout.write("\x1b[1A\x1b[2K")
+            for index, line in enumerate(lines):
+                sys.stdout.write(line)
+                if index < len(lines) - 1 or not finalize:
+                    sys.stdout.write("\n")
+            if finalize:
+                sys.stdout.write("\n")
+            sys.stdout.flush()
+        else:
+            print("\n".join(lines))
+
+        return len(lines)
+
+    def _write_live_block(
+        self,
+        lines: List[str],
+        previous_line_count: int = 0,
+        finalize: bool = False,
+    ) -> int:
+        """Write a reusable adaptive status block for long-running analyses."""
+
+        return self._write_training_status(lines, previous_line_count, finalize)
+
+    def _format_metric_lines(
+        self,
+        title: str,
+        items: List[Tuple[str, str]],
+        width: int = 80,
+    ) -> List[str]:
+        """Formats a small metrics panel:
+
+        TITLE
+        -
+        Key: value
+        Key: value
+        """
+
+        # Ensure title is presented in uppercase as requested
+        lines: List[str] = [title.upper(), "-"]
+        for label, value in items:
+            lines.append(self._truncate_for_terminal(f"{label}: {value}", width))
+        return lines
+
     # =========================================================================
     # TRAINING METHODS
     # =========================================================================
@@ -354,6 +465,7 @@ class PulsarPINN:
         training_reports: int = 100,
         physics_weight: float = 1.0,
         data_weight: float = 1.0,
+        verbose: bool = True,
     ) -> None:
         """
         Trains the PINN.
@@ -375,15 +487,20 @@ class PulsarPINN:
         - data_weight : float
             Weight for data loss component.
             Default: 1.0.
+
+        - verbose : bool
+            Whether to print adaptive progress output during training. Default: True.
         """
         # Inform user that training starts
-        print("\n" + "=" * 80)
-        print("PINN TRAINING INITIATED")
-        print("=" * 80)
-        print(f"Total epochs: {epochs:,}")
-        print(f"Report interval: Every {training_reports} epochs")
-        print(f"Physics weight: {physics_weight:.2f} | Data weight: {data_weight:.2f}")
-        print("=" * 80 + "\n")
+        if verbose:
+            print(
+                f"PINN training started: {epochs:,} epochs, reporting every {training_reports} epochs."
+            )
+            print(
+                f"Loss weights -> physics: {physics_weight:.2f}, data: {data_weight:.2f}"
+            )
+
+        previous_report_lines = 0
 
         # What each epoch does
         for epoch in range(epochs):
@@ -396,7 +513,7 @@ class PulsarPINN:
             self.loss_log["data"].append(train_loss["data"])
 
             # Prints progress & metric logs in terminal for every interval
-            if epoch % training_reports == 0:
+            if verbose and (epoch % training_reports == 0 or epoch == epochs - 1):
 
                 # Evaluate & store loss based on training sets
                 val_loss = self._validation_step(physics_weight, data_weight)
@@ -405,33 +522,29 @@ class PulsarPINN:
                 self.loss_log["val_physics"].append(val_loss["physics"])
                 self.loss_log["val_data"].append(val_loss["data"])
 
-                # Format progress
-                progress_pct = (epoch / epochs) * 100
-                epoch_str = f"[{epoch:,}/{epochs:,}]".ljust(20)
-                progress_str = f"{progress_pct:6.2f}%"
-
-                # Print epoch progress header
-                print(f"Epoch {epoch_str} {progress_str}")
-                print("-" * 80)
-
-                # Print training and validation losses
-                print(f"  Train Loss | Total: {train_loss['total']:12.6e} | Physics: {train_loss['physics']:12.6e} | Data: {train_loss['data']:12.6e}")
-                print(f"  Val Loss   | Total: {val_loss['total']:12.6e} | Physics: {val_loss['physics']:12.6e} | Data: {val_loss['data']:12.6e}")
-
-                # Print learned constants in a clean format
-                print(f"\n  Learned Constants:")
-                for name, param in self.learnable_params.items():
-                    print(f"    {name:15s} = {param.item():12.8f}")
-                print("-" * 80 + "\n")
+                status_lines = self._format_training_status_lines(
+                    epoch,
+                    epochs,
+                    train_loss,
+                    val_loss,
+                )
+                previous_report_lines = self._write_training_status(
+                    status_lines,
+                    previous_report_lines,
+                    finalize=False,
+                )
 
         # Print final summary after PINN training is done
-        print("\n" + "=" * 80)
-        print("TRAINING COMPLETE")
-        print("=" * 80)
-        print("Final Learned Constants:")
-        for name, param in self.learnable_params.items():
-            print(f"  {name:15s} = {param.item():12.8f}")
-        print("=" * 80 + "\n")
+        if verbose and previous_report_lines:
+            self._write_training_status([], previous_report_lines, finalize=True)
+        if verbose:
+            print("\n" + "-" * 80)
+            print("TRAINING COMPLETE")
+            print("-" * 80)
+            print("Final Learned Constants:")
+            for name, param in self.learnable_params.items():
+                print(f"  {name:15s} = {param.item():12.8f}")
+            print("-" + "\n")
 
     def _train_step(
         self, physics_weight: float, data_weight: float
@@ -581,7 +694,7 @@ class PulsarPINN:
         """Print formatted evaluation report with overfitting detection."""
 
         print("\n" + "=" * 70)
-        print("MODEL EVALUATION - QUANTITATIVE METRICS")
+        print("QUANTITATIVE METRICS")
         print("=" * 70)
 
         # Print metrics for each data split (test first as most important)
@@ -698,9 +811,9 @@ class PulsarPINN:
         Prints a formatted summary of the PINN architecture, training configuration,
         data splits, and learned constants to the terminal.
         """
-        print("\n" + "=" * 80)
-        print("MODEL HYPERPARAMETERS AND CONFIGURATION")
-        print("=" * 80)
+        print("\n" + "-" * 80)
+        print("MODEL HYPERPARAMETERS AND CONFIGURATIONS")
+        print("-" * 80)
 
         print("\nNeural Network Architecture:")
         print("-" * 80)
@@ -733,9 +846,7 @@ class PulsarPINN:
         print("\nOptimizer Configuration:")
         print("-" * 80)
         print(f"  Optimizer Type:  {type(self.optimizer).__name__}")
-        print(f"  Learning Rate:   {self.optimizer.param_groups[0]['lr']:.6f}")
-
-        print("=" * 80 + "\n")
+        print(f"  Learning Rate:   {self.optimizer.param_groups[0]['lr']:.6f}\n")
 
     def bootstrap_uncertainty(
         self,
@@ -794,15 +905,21 @@ class PulsarPINN:
         >>> print(f"logR = {uncertainties['logR']['mean']:.3f} plus minus {uncertainties['logR']['std']:.3f}")
         >>> print(f"95% CI: [{uncertainties['logR']['ci_lower']:.3f}, {uncertainties['logR']['ci_upper']:.3f}]")
         """
+        previous_block_lines = 0
+
         if verbose:
-            print("=" * 70)
-            print("BOOTSTRAP UNCERTAINTY ESTIMATION")
-            print("=" * 70)
-            print(f"Bootstrap iterations: {n_bootstrap}")
-            print(f"Sample fraction: {sample_fraction:.1%}")
-            print(f"Training epochs per iteration: {epochs}")
-            print(f"Confidence level: {confidence_level:.1%}")
-            print("=" * 70 + "\n")
+            previous_block_lines = self._write_live_block(
+                self._format_metric_lines(
+                    "BOOTSTRAP UNCERTAINTY ESTIMATION",
+                    [
+                        ("Bootstrap iterations", f"{n_bootstrap:,}"),
+                        ("Sample fraction", f"{sample_fraction:.1%}"),
+                        ("Training epochs per iteration", f"{epochs:,}"),
+                        ("Confidence level", f"{confidence_level:.1%}"),
+                        ("Status", "Starting"),
+                    ],
+                ),
+            )
 
         # Store original model state
         original_constants = self.store_learned_constants()
@@ -813,10 +930,6 @@ class PulsarPINN:
 
         # Perform bootstrap iterations
         for i in range(n_bootstrap):
-            if verbose and (i + 1) % max(1, n_bootstrap // 10) == 0:
-                progress_pct = ((i + 1) / n_bootstrap) * 100
-                print(f"  Bootstrap [{i+1:,}/{n_bootstrap:,}] {progress_pct:6.2f}%")
-
             # Randomly sample training data with replacement
             # Calculate the number of samples for bootstrap resampling
             n_samples = int(len(self.x_train) * sample_fraction)
@@ -837,7 +950,13 @@ class PulsarPINN:
             self.y_train_torch = boot_y_torch
 
             # Train on bootstrap sample (suppress training output)
-            self.train(epochs=epochs, training_reports=epochs + 1, physics_weight=1.0, data_weight=1.0)
+            self.train(
+                epochs=epochs,
+                training_reports=epochs + 1,
+                physics_weight=1.0,
+                data_weight=1.0,
+                verbose=False,
+            )
 
             # Store learned constants from this iteration
             learned = self.store_learned_constants()
@@ -848,14 +967,35 @@ class PulsarPINN:
             self.x_train_torch = original_x_train_torch
             self.y_train_torch = original_y_train_torch
 
+            if verbose and (i + 1) % max(1, n_bootstrap // 10) == 0:
+                progress_pct = ((i + 1) / n_bootstrap) * 100
+                status_items = [
+                    ("Iteration", f"{i + 1:,}/{n_bootstrap:,} ({progress_pct:6.2f}%)"),
+                    ("Sample fraction", f"{sample_fraction:.1%}"),
+                    ("Training epochs per iteration", f"{epochs:,}"),
+                ]
+                for name, value in self.store_learned_constants().items():
+                    status_items.append((name, f"{value:.6f}"))
+                previous_block_lines = self._write_live_block(
+                    self._format_metric_lines("BOOTSTRAP UNCERTAINTY ESTIMATION", status_items),
+                    previous_block_lines,
+                )
+
         # Restore original model state
         self.model.load_state_dict(original_model_state)
         self.set_learn_constants(original_constants)
 
+        result_lines: List[str] = []
+
         if verbose:
-            print("\n" + "=" * 70)
-            print("BOOTSTRAP UNCERTAINTY RESULTS")
-            print("=" * 70)
+            result_lines = self._format_metric_lines(
+                "\nBOOTSTRAP UNCERTAINTY RESULTS",
+                [
+                    ("Iterations", f"{n_bootstrap:,}"),
+                    ("Sample fraction", f"{sample_fraction:.1%}"),
+                    ("Confidence level", f"{confidence_level:.1%}"),
+                ],
+            )
 
         # Compute statistics
         alpha = 1 - confidence_level
@@ -877,17 +1017,20 @@ class PulsarPINN:
             }
 
             if verbose:
-                print(f"\n{name.upper()}")
-                print("-" * 70)
-                print(f"  Original fitted value:  {original_constants[name]:14.8f}")
-                print(f"  Bootstrap mean:         {mean_val:14.8f}")
-                print(f"  Bootstrap std dev:      {std_val:14.8f}")
-                print(f"  {confidence_level:.0%} Confidence Interval:")
-                print(f"    Lower bound:          {ci_lower:14.8f}")
-                print(f"    Upper bound:          {ci_upper:14.8f}")
+                result_lines.extend(
+                    [
+                        f"{name}",
+                        f"  Original fitted value:  {original_constants[name]:14.8f}",
+                        f"  Bootstrap mean:         {mean_val:14.8f}",
+                        f"  Bootstrap std dev:      {std_val:14.8f}",
+                        f"  {confidence_level:.0%} Confidence Interval:",
+                        f"    Lower bound:          {ci_lower:14.8f}",
+                        f"    Upper bound:          {ci_upper:14.8f}",
+                    ]
+                )
 
         if verbose:
-            print("\n" + "=" * 70)
+            self._write_live_block(result_lines, previous_block_lines, finalize=True)
 
         return results
 
@@ -942,14 +1085,20 @@ class PulsarPINN:
         >>> uncertainties = pinn.monte_carlo_uncertainty(n_simulations=1000)
         >>> print(f"logR = {uncertainties['logR']['mean']:.3f} plus minus {uncertainties['logR']['std']:.3f}")
         """
+        previous_block_lines = 0
+
         if verbose:
-            print("=" * 70)
-            print("MONTE CARLO UNCERTAINTY ESTIMATION")
-            print("=" * 70)
-            print(f"Simulations: {n_simulations}")
-            print(f"Noise level: {noise_level:.1%} of data std dev")
-            print(f"Confidence level: {confidence_level:.1%}")
-            print()
+            previous_block_lines = self._write_live_block(
+                self._format_metric_lines(
+                    "MONTE CARLO UNCERTAINTY ESTIMATION",
+                    [
+                        ("Simulations", f"{n_simulations:,}"),
+                        ("Noise level", f"{noise_level:.1%} of data std dev"),
+                        ("Confidence level", f"{confidence_level:.1%}"),
+                        ("Status", "Starting"),
+                    ],
+                ),
+            )
 
         # Store original constants and model
         original_constants = self.store_learned_constants()
@@ -963,10 +1112,6 @@ class PulsarPINN:
         y_std = self.y_train_torch.std()
 
         for i in range(n_simulations):
-            if verbose and (i + 1) % max(1, n_simulations // 10) == 0:
-                progress_pct = ((i + 1) / n_simulations) * 100
-                print(f"  Simulation [{i+1:,}/{n_simulations:,}] {progress_pct:6.2f}%")
-
             # Add Gaussian noise to data
             x_noise = torch.randn_like(self.x_train_torch) * (noise_level * x_std)
             y_noise = torch.randn_like(self.y_train_torch) * (noise_level * y_std)
@@ -981,7 +1126,13 @@ class PulsarPINN:
             self.y_train_torch = perturbed_y
 
             # Quick training (fewer epochs than bootstrap)
-            self.train(epochs=500, training_reports=501, physics_weight=1.0, data_weight=1.0)
+            self.train(
+                epochs=500,
+                training_reports=501,
+                physics_weight=1.0,
+                data_weight=1.0,
+                verbose=False,
+            )
 
             # Store learned constants
             learned = self.store_learned_constants()
@@ -992,6 +1143,20 @@ class PulsarPINN:
             self.x_train_torch = original_x_train
             self.y_train_torch = original_y_train
 
+            if verbose and (i + 1) % max(1, n_simulations // 10) == 0:
+                progress_pct = ((i + 1) / n_simulations) * 100
+                status_items = [
+                    ("Simulation", f"{i + 1:,}/{n_simulations:,} ({progress_pct:6.2f}%)"),
+                    ("Noise level", f"{noise_level:.1%} of data std dev"),
+                    ("Confidence level", f"{confidence_level:.1%}"),
+                ]
+                for name, value in self.store_learned_constants().items():
+                    status_items.append((name, f"{value:.6f}"))
+                previous_block_lines = self._write_live_block(
+                    self._format_metric_lines("MONTE CARLO UNCERTAINTY ESTIMATION", status_items),
+                    previous_block_lines,
+                )
+
         # Restore original model state
         self.model.load_state_dict(original_model_state)
         self.set_learn_constants(original_constants)
@@ -999,6 +1164,18 @@ class PulsarPINN:
         # Compute statistics
         alpha = 1 - confidence_level
         results = {}
+
+        result_lines: List[str] = []
+
+        if verbose:
+            result_lines = self._format_metric_lines(
+                "MONTE CARLO UNCERTAINTY RESULTS",
+                [
+                    ("Simulations", f"{n_simulations:,}"),
+                    ("Noise level", f"{noise_level:.1%} of data std dev"),
+                    ("Confidence level", f"{confidence_level:.1%}"),
+                ],
+            )
 
         for name, values in mc_constants.items():
             values_array = np.array(values)
@@ -1016,17 +1193,20 @@ class PulsarPINN:
             }
 
             if verbose:
-                print(f"\n{name.upper()}")
-                print("-" * 70)
-                print(f"  Original fitted value:  {original_constants[name]:14.8f}")
-                print(f"  Monte Carlo mean:       {mean_val:14.8f}")
-                print(f"  Monte Carlo std dev:    {std_val:14.8f}")
-                print(f"  {confidence_level:.0%} Confidence Interval:")
-                print(f"    Lower bound:          {ci_lower:14.8f}")
-                print(f"    Upper bound:          {ci_upper:14.8f}")
+                result_lines.extend(
+                    [
+                        f"{name}",
+                        f"  Original fitted value:  {original_constants[name]:14.8f}",
+                        f"  Monte Carlo mean:       {mean_val:14.8f}",
+                        f"  Monte Carlo std dev:    {std_val:14.8f}",
+                        f"  {confidence_level:.0%} Confidence Interval:",
+                        f"    Lower bound:          {ci_lower:14.8f}",
+                        f"    Upper bound:          {ci_upper:14.8f}",
+                    ]
+                )
 
         if verbose:
-            print("\n" + "=" * 70)
+            self._write_live_block(result_lines, previous_block_lines, finalize=True)
 
         return results
 
@@ -1115,14 +1295,20 @@ class PulsarPINN:
         >>>     print("Model learns genuine physical relationships!")
         >>> print(f"p-value: {validation['p_value']:.4f}")
         """
+        previous_block_lines = 0
+
         if verbose:
-            print("=" * 70)
-            print("PERMUTATION TEST - VALIDATING LEARNED RELATIONSHIPS")
-            print("=" * 70)
-            print(f"Permutations: {n_permutations}")
-            print(f"Epochs per permutation: {epochs}")
-            print(f"Significance level: {significance_level}")
-            print()
+            previous_block_lines = self._write_live_block(
+                self._format_metric_lines(
+                    "\nPERMUTATION TEST",
+                    [
+                        ("Permutations", f"{n_permutations:,}"),
+                        ("Epochs per permutation", f"{epochs:,}"),
+                        ("Significance level", f"{significance_level:.2f}"),
+                        ("Status", "Starting"),
+                    ],
+                ),
+            )
 
         # Store original model state
         original_constants = self.store_learned_constants()
@@ -1133,18 +1319,10 @@ class PulsarPINN:
             self.evaluate_test_set(verbose=False)
         real_r2 = self.test_metrics.get('test_r2', 0.0)
 
-        if verbose:
-            print(f"Real model Rsquared: {real_r2:.6f}")
-            print("\nRunning permutation tests...")
-
         # Storage for permuted results
         permuted_r2_values = []
 
         for i in range(n_permutations):
-            if verbose and (i + 1) % max(1, n_permutations // 10) == 0:
-                progress_pct = ((i + 1) / n_permutations) * 100
-                print(f"  Permutation [{i+1:,}/{n_permutations:,}] {progress_pct:6.2f}%")
-
             # Randomly shuffle target labels (breaks real relationships)
             permuted_indices = np.random.permutation(len(self.y_train_torch))
             permuted_y_train = self.y_train_torch[permuted_indices]
@@ -1154,7 +1332,13 @@ class PulsarPINN:
             self.y_train_torch = permuted_y_train
 
             # Train on permuted data (suppress output)
-            self.train(epochs=epochs, training_reports=epochs + 1, physics_weight=1.0, data_weight=1.0)
+            self.train(
+                epochs=epochs,
+                training_reports=epochs + 1,
+                physics_weight=1.0,
+                data_weight=1.0,
+                verbose=False,
+            )
 
             # Evaluate on original test set
             test_metrics = self.evaluate_test_set(verbose=False)
@@ -1162,6 +1346,20 @@ class PulsarPINN:
 
             # Restore original training data
             self.y_train_torch = original_y_train
+
+            if verbose and (i + 1) % max(1, n_permutations // 10) == 0:
+                progress_pct = ((i + 1) / n_permutations) * 100
+                previous_block_lines = self._write_live_block(
+                    self._format_metric_lines(
+                        "PERMUTATION TEST - VALIDATING LEARNED RELATIONSHIPS",
+                        [
+                            ("Permutations", f"{i + 1:,}/{n_permutations:,} ({progress_pct:6.2f}%)"),
+                            ("Real model Rsquared", f"{real_r2:.6f}"),
+                            ("Completed runs", f"{len(permuted_r2_values):,}"),
+                        ],
+                    ),
+                    previous_block_lines,
+                )
 
         # Restore original model state
         self.model.load_state_dict(original_model_state)
@@ -1187,22 +1385,20 @@ class PulsarPINN:
         }
 
         if verbose:
-            print("\n" + "=" * 70)
-            print("PERMUTATION TEST RESULTS")
-            print("=" * 70)
-            print(f"\nReal model Rsquared:           {real_r2:.8f}")
-            print(f"Permuted models Rsquared mean: {permuted_mean:.8f} +/- {permuted_std:.8f}")
-            print(f"\np-value: {p_value:.6f}")
-            print(f"Significance level: {significance_level:.6f}")
-            print("\n" + "-" * 70)
-            print("ASSESSMENT:")
-            if is_significant:
-                print("   [PASS] Real model significantly better than random")
-                print("   Model learns genuine physical relationships")
-            else:
-                print("   [FAIL] Real model not significantly better than random")
-                print("   WARNING: Model may be capturing spurious correlations")
-            print("=" * 70)
+            self._write_live_block(
+                self._format_metric_lines(
+                    "\nPERMUTATION TEST RESULTS",
+                    [
+                        ("Real model Rsquared", f"{real_r2:.8f}"),
+                        ("Permuted mean Rsquared", f"{permuted_mean:.8f} +/- {permuted_std:.8f}"),
+                        ("p-value", f"{p_value:.6f}"),
+                        ("Significance level", f"{significance_level:.6f}"),
+                        ("Assessment", "PASS" if is_significant else "FAIL"),
+                    ],
+                ),
+                previous_block_lines,
+                finalize=True,
+            )
 
         return results
 
@@ -1244,13 +1440,19 @@ class PulsarPINN:
         >>> validation = pinn.validate_with_feature_shuffling(n_shuffles=50)
         >>> print(f"Real vs shuffled difference: {validation['r2_difference']:.4f}")
         """
+        previous_block_lines = 0
+
         if verbose:
-            print("=" * 70)
-            print("FEATURE SHUFFLING TEST - VALIDATING INPUT IMPORTANCE")
-            print("=" * 70)
-            print(f"Shuffles: {n_shuffles}")
-            print(f"Epochs per shuffle: {epochs}")
-            print()
+            previous_block_lines = self._write_live_block(
+                self._format_metric_lines(
+                    "\nFEATURE SHUFFLING TEST",
+                    [
+                        ("Shuffles", f"{n_shuffles:,}"),
+                        ("Epochs per shuffle", f"{epochs:,}"),
+                        ("Status", "Starting"),
+                    ],
+                ),
+            )
 
         # Store original model state
         original_constants = self.store_learned_constants()
@@ -1261,18 +1463,10 @@ class PulsarPINN:
             self.evaluate_test_set(verbose=False)
         real_r2 = self.test_metrics.get('test_r2', 0.0)
 
-        if verbose:
-            print(f"Real model Rsquared: {real_r2:.6f}")
-            print("\nRunning feature shuffling tests...")
-
         # Storage for shuffled results
         shuffled_r2_values = []
 
         for i in range(n_shuffles):
-            if verbose and (i + 1) % max(1, n_shuffles // 10) == 0:
-                progress_pct = ((i + 1) / n_shuffles) * 100
-                print(f"  Shuffle [{i+1:,}/{n_shuffles:,}] {progress_pct:6.2f}%")
-
             # Randomly shuffle input features (breaks x-y relationship)
             shuffled_indices = np.random.permutation(len(self.x_train_torch))
             shuffled_x_train = self.x_train_torch[shuffled_indices]
@@ -1282,7 +1476,13 @@ class PulsarPINN:
             self.x_train_torch = shuffled_x_train
 
             # Train on shuffled data
-            self.train(epochs=epochs, training_reports=epochs + 1, physics_weight=1.0, data_weight=1.0)
+            self.train(
+                epochs=epochs,
+                training_reports=epochs + 1,
+                physics_weight=1.0,
+                data_weight=1.0,
+                verbose=False,
+            )
 
             # Evaluate
             test_metrics = self.evaluate_test_set(verbose=False)
@@ -1290,6 +1490,20 @@ class PulsarPINN:
 
             # Restore original training data
             self.x_train_torch = original_x_train
+
+            if verbose and (i + 1) % max(1, n_shuffles // 10) == 0:
+                progress_pct = ((i + 1) / n_shuffles) * 100
+                previous_block_lines = self._write_live_block(
+                    self._format_metric_lines(
+                        "FEATURE SHUFFLING TEST",
+                        [
+                            ("Shuffles", f"{i + 1:,}/{n_shuffles:,} ({progress_pct:6.2f}%)"),
+                            ("Real model Rsquared", f"{real_r2:.6f}"),
+                            ("Completed runs", f"{len(shuffled_r2_values):,}"),
+                        ],
+                    ),
+                    previous_block_lines,
+                )
 
         # Restore original model state
         self.model.load_state_dict(original_model_state)
@@ -1311,22 +1525,20 @@ class PulsarPINN:
         }
 
         if verbose:
-            print("\n" + "=" * 70)
-            print("FEATURE SHUFFLING TEST RESULTS")
-            print("=" * 70)
-            print(f"\nReal model Rsquared:           {real_r2:.8f}")
-            print(f"Shuffled models Rsquared mean: {shuffled_mean:.8f} +/- {shuffled_std:.8f}")
-            print(f"\nImprovement over shuffled: {r2_difference:.8f}")
-            print(f"Improvement factor:        {results['improvement_factor']:.2f}x")
-            print("\n" + "-" * 70)
-            print("ASSESSMENT:")
-            if r2_difference > 0.1:
-                print("   [PASS] Real features significantly better than shuffled")
-                print("   Input features contain genuine information")
-            else:
-                print("   [WARN] Real features not much better than shuffled")
-                print("   Features may not contain meaningful signal")
-            print("=" * 70)
+            self._write_live_block(
+                self._format_metric_lines(
+                    "FEATURE SHUFFLING TEST RESULTS",
+                    [
+                        ("Real model Rsquared", f"{real_r2:.8f}"),
+                        ("Shuffled mean Rsquared", f"{shuffled_mean:.8f} +/- {shuffled_std:.8f}"),
+                        ("Improvement over shuffled", f"{r2_difference:.8f}"),
+                        ("Improvement factor", f"{results['improvement_factor']:.2f}x"),
+                        ("Assessment", "PASS" if r2_difference > 0.1 else "WARN"),
+                    ],
+                ),
+                previous_block_lines,
+                finalize=True,
+            )
 
         return results
 
@@ -1365,12 +1577,18 @@ class PulsarPINN:
         >>> if validation['real_much_better']:
         >>>     print("Model correctly rejects impossible physics!")
         """
+        previous_block_lines = 0
+
         if verbose:
-            print("=" * 70)
-            print("IMPOSSIBLE PHYSICS TEST - VALIDATING PHYSICS CONSTRAINTS")
-            print("=" * 70)
-            print(f"Training epochs: {epochs}")
-            print()
+            previous_block_lines = self._write_live_block(
+                self._format_metric_lines(
+                    "\nIMPOSSIBLE PHYSICS TEST",
+                    [
+                        ("Training epochs", f"{epochs:,}"),
+                        ("Status", "Starting"),
+                    ],
+                ),
+            )
 
         # Store original model state
         original_constants = self.store_learned_constants()
@@ -1381,11 +1599,6 @@ class PulsarPINN:
             self.evaluate_test_set(verbose=False)
         real_r2 = self.test_metrics.get('test_r2', 0.0)
         real_loss = self.test_metrics.get('test_loss_total', float('inf'))
-
-        if verbose:
-            print(f"Real physics model Rsquared: {real_r2:.6f}")
-            print(f"Real physics loss:     {real_loss:.6e}")
-            print("\nTesting with inverted physics (swapped inputs/outputs)...")
 
         # Swap training and test data (physically meaningless)
         original_x_train = self.x_train_torch
@@ -1400,7 +1613,13 @@ class PulsarPINN:
         self.y_test_torch = original_x_test
 
         # Train on impossible physics
-        self.train(epochs=epochs, training_reports=epochs + 1, physics_weight=1.0, data_weight=1.0)
+        self.train(
+            epochs=epochs,
+            training_reports=epochs + 1,
+            physics_weight=1.0,
+            data_weight=1.0,
+            verbose=False,
+        )
 
         # Evaluate impossible model
         impossible_metrics = self.evaluate_test_set(verbose=False)
@@ -1429,25 +1648,21 @@ class PulsarPINN:
         }
 
         if verbose:
-            print("\n" + "=" * 70)
-            print("IMPOSSIBLE PHYSICS TEST RESULTS")
-            print("=" * 70)
-            print(f"\nReal Physics Model:")
-            print(f"  Rsquared: {real_r2:.8f}")
-            print(f"  Loss:     {real_loss:.8e}")
-            print(f"\nImpossible Physics Model (Swapped Variables):")
-            print(f"  Rsquared: {impossible_r2:.8f}")
-            print(f"  Loss:     {impossible_loss:.8e}")
-            print(f"\nDifference: {r2_difference:.8f}")
-            print("\n" + "-" * 70)
-            print("ASSESSMENT:")
-            if real_much_better:
-                print("   [PASS] Real physics significantly better than impossible")
-                print("   Model respects physical constraints")
-            else:
-                print("   [WARN] Real physics not much better than impossible")
-                print("   Model may not be learning genuine physics")
-            print("=" * 70)
+            self._write_live_block(
+                self._format_metric_lines(
+                    "IMPOSSIBLE PHYSICS TEST RESULTS",
+                    [
+                        ("Real Rsquared", f"{real_r2:.8f}"),
+                        ("Impossible Rsquared", f"{impossible_r2:.8f}"),
+                        ("Real loss", f"{real_loss:.8e}"),
+                        ("Impossible loss", f"{impossible_loss:.8e}"),
+                        ("Difference", f"{r2_difference:.8f}"),
+                        ("Assessment", "PASS" if real_much_better else "WARN"),
+                    ],
+                ),
+                previous_block_lines,
+                finalize=True,
+            )
 
         return results
 
@@ -1509,13 +1724,20 @@ class PulsarPINN:
         >>> cv_results = pinn.kfold_cross_validation(k=5, epochs=2000)
         >>> print(f"Mean R2: {cv_results['mean_r2']:.4f} +/- {cv_results['std_r2']:.4f}")
         """
+        previous_block_lines = 0
+
         if verbose:
-            print("\n" + "=" * 80)
-            print("K-FOLD CROSS VALIDATION")
-            print("=" * 80)
-            print(f"Number of folds: {k}")
-            print(f"Epochs per fold: {epochs}")
-            print("=" * 80 + "\n")
+            previous_block_lines = self._write_live_block(
+                self._format_metric_lines(
+                    "\nK-FOLD CROSS VALIDATION",
+                    [
+                        ("Number of folds", f"{k}"),
+                        ("Epochs per fold", f"{epochs:,}"),
+                        ("Status", "Starting"),
+                    ],
+                    width=80,
+                ),
+            )
 
         # Store original model state
         original_constants = self.store_learned_constants()
@@ -1538,8 +1760,18 @@ class PulsarPINN:
         # Perform k-fold cross validation
         for fold in range(k):
             if verbose:
-                print(f"\nTraining Fold {fold + 1}/{k}...")
-                print("-" * 80)
+                previous_block_lines = self._write_live_block(
+                    self._format_metric_lines(
+                        "\nK-FOLD CROSS VALIDATION",
+                        [
+                            ("Fold", f"{fold + 1}/{k}"),
+                            ("Epochs per fold", f"{epochs:,}"),
+                            ("Status", "Training"),
+                        ],
+                        width=80,
+                    ),
+                    previous_block_lines,
+                )
 
             # Determine validation indices for this fold
             val_start = fold * fold_size
@@ -1621,10 +1853,19 @@ class PulsarPINN:
                 fold_constants.append(self.store_learned_constants())
 
                 if verbose:
-                    print(f"  Validation R2:   {r2.item():.6f}")
-                    print(f"  Validation RMSE: {rmse.item():.6e}")
-                    print(f"  Validation MAE:  {mae.item():.6e}")
-                    print(f"  Learned constants: {fold_constants[-1]}")
+                    previous_block_lines = self._write_live_block(
+                        self._format_metric_lines(
+                            "\nK-FOLD CROSS VALIDATION",
+                            [
+                                ("Fold", f"{fold + 1}/{k}"),
+                                ("Validation R2", f"{r2.item():.6f}"),
+                                ("Validation RMSE", f"{rmse.item():.6e}"),
+                                ("Validation MAE", f"{mae.item():.6e}"),
+                            ],
+                            width=80,
+                        ),
+                        previous_block_lines,
+                    )
 
         # Restore original model state
         self.model.load_state_dict(original_model_state)
@@ -1647,18 +1888,22 @@ class PulsarPINN:
         }
 
         if verbose:
-            print("\n" + "=" * 80)
-            print("K-FOLD CROSS VALIDATION RESULTS")
-            print("=" * 80)
-            print(f"\nMean R2:   {results['mean_r2']:.6f} +/- {results['std_r2']:.6f}")
-            print(f"Mean RMSE: {results['mean_rmse']:.6e} +/- {results['std_rmse']:.6e}")
-            print(f"Mean MAE:  {results['mean_mae']:.6e} +/- {results['std_mae']:.6e}")
-            print("\nLearned Constants Across Folds:")
-            print("-" * 80)
+            summary_lines = self._format_metric_lines(
+                "\nK-FOLD CROSS VALIDATION RESULTS",
+                [
+                    ("Mean R2", f"{results['mean_r2']:.6f} +/- {results['std_r2']:.6f}"),
+                    ("Mean RMSE", f"{results['mean_rmse']:.6e} +/- {results['std_rmse']:.6e}"),
+                    ("Mean MAE", f"{results['mean_mae']:.6e} +/- {results['std_mae']:.6e}"),
+                ],
+                width=80,
+            )
+            summary_lines.append("Learned Constants Across Folds:")
             for const_name in fold_constants[0].keys():
                 const_values = [fc[const_name] for fc in fold_constants]
-                print(f"  {const_name}: {np.mean(const_values):.6f} +/- {np.std(const_values):.6f}")
-            print("=" * 80 + "\n")
+                summary_lines.append(
+                    f"  {const_name}: {np.mean(const_values):.6f} +/- {np.std(const_values):.6f}"
+                )
+            self._write_live_block(summary_lines, previous_block_lines, finalize=True)
 
         return results
 
@@ -1700,11 +1945,19 @@ class PulsarPINN:
         >>> if robustness['all_tests_passed']:
         >>>     print("Model passed all robustness checks!")
         """
+        previous_block_lines = 0
+
         if verbose:
-            print("\n" + "=" * 70)
-            print("COMPREHENSIVE ROBUSTNESS VALIDATION SUITE")
-            print("=" * 70)
-            print()
+            previous_block_lines = self._write_live_block(
+                self._format_metric_lines(
+                    "\nROBUSTNESS VALIDATIONS",
+                    [
+                        ("Permutation tests", f"{n_permutations:,}"),
+                        ("Feature shuffles", f"{n_shuffles:,}"),
+                        ("Status", "Running"),
+                    ],
+                ),
+            )
 
         # Run all tests
         permutation_results = self.validate_with_permutation_test(
@@ -1713,17 +1966,11 @@ class PulsarPINN:
             verbose=verbose
         )
 
-        if verbose:
-            print("\n")
-
         feature_results = self.validate_with_feature_shuffling(
             n_shuffles=n_shuffles,
             epochs=1000,
             verbose=verbose
         )
-
-        if verbose:
-            print("\n")
 
         physics_results = self.validate_with_impossible_physics(
             epochs=2000,
@@ -1745,20 +1992,18 @@ class PulsarPINN:
         }
 
         if verbose:
-            print("\n" + "=" * 70)
-            print("OVERALL ROBUSTNESS ASSESSMENT")
-            print("=" * 70)
-            print(f"\nTest Results:")
-            print(f"  Permutation test:      [PASS] {permutation_results['is_significant']}")
-            print(f"  Feature shuffling:     [PASS] {feature_results['r2_difference'] > 0.1}")
-            print(f"  Impossible physics:    [PASS] {physics_results['real_much_better']}")
-            print("\n" + "-" * 70)
-            if all_tests_passed:
-                print("VERDICT: Model demonstrates robust learning of genuine physics")
-                print("         Safe to use for scientific inference")
-            else:
-                print("VERDICT: Model shows signs of spurious correlations")
-                print("         Use caution in scientific interpretation")
-            print("=" * 70)
+            self._write_live_block(
+                self._format_metric_lines(
+                    "OVERALL ROBUSTNESS ASSESSMENT",
+                    [
+                        ("Permutation test", "PASS" if permutation_results['is_significant'] else "FAIL"),
+                        ("Feature shuffling", "PASS" if feature_results['r2_difference'] > 0.1 else "WARN"),
+                        ("Impossible physics", "PASS" if physics_results['real_much_better'] else "WARN"),
+                        ("Verdict", "ROBUST" if all_tests_passed else "CAUTION"),
+                    ],
+                ),
+                previous_block_lines,
+                finalize=True,
+            )
 
         return results
